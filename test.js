@@ -2,7 +2,17 @@ const { exec } = require('node:child_process')
 
 exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen
 
-exec('vlc;sleep 1;vlc rtsp://192.168.1.1:7447/6OHQ0QIWgxnIbTTp --fullscreen', (error, stdout, stderr) => {
+exec('vlc', (error, stdout, stderr) => {
+    
+    if (error) {
+        console.error(`exec error: ${error}`);
+        return;
+    }
+    console.log(`stdout: ${stdout}`);
+    console.error(`stderr: ${stderr}`)
+  
+});
+exec('vlc rtsp://192.168.1.1:7447/6OHQ0QIWgxnIbTTp --fullscreen', (error, stdout, stderr) => {
     
     if (error) {
         console.error(`exec error: ${error}`);
