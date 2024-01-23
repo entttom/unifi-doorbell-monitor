@@ -28,7 +28,7 @@ exec('if pgrep vlc > /dev/null; then echo "VLC is already running"; else vlc & f
 exec('xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen
 
 // start stream - change IP to match RTSP Stream!
-  exec('vlc rtsp://1.1.1.1 --fullscreen', (error, stdout, stderr) => {
+  exec('vlc rtsps://192.168.1.1:7441/6OHQ0QIWgxnIbTTp?enableSrtp --fullscreen', (error, stdout, stderr) => {
     if (error) {
         console.error(`exec error: ${error}`);
         return;
