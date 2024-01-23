@@ -12,7 +12,7 @@ app.listen(port, () => {
 
 exec('export DISPLAY=:0;xset q;xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen
 
-app.post('/api/ring_ring', (req, res) => {
+app.get('/api/ring_ring', (req, res) => {
 
 exec('xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen
 
