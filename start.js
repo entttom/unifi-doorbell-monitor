@@ -14,15 +14,20 @@ exec('export DISPLAY=:0;xset q;xset dpms force off', (error, stdout, stderr) => 
 
 app.get('/api/ring_ring', (req, res) => {
 
-exec('xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen
+exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen
 
-// start stream - change IP to match RTSP Stream!
-  // EDIT Unifi Stream url
-  //remove the second s in rtsps
-  //change port from 7441 to 7447
-  //remove (?enableSrtp)
-
-  exec('vlc rtsp://192.168.1.1:7447/6OHQ0QIWgxnIbTTp --fullscreen', (error, stdout, stderr) => {
+exec('vlc', (error, stdout, stderr) => { //Start VLC
+    
+    if (error) {
+        console.error(`exec error: ${error}`);
+        return;
+    }
+    console.log(`stdout: ${stdout}`);
+    console.error(`stderr: ${stderr}`)
+  
+});
+exec('vlc rtsp://192.168.1.1:7447/6OHQ0QIWgxnIbTTp --fullscreen', (error, stdout, stderr) => {
+    
     if (error) {
         console.error(`exec error: ${error}`);
         return;
@@ -45,7 +50,6 @@ setTimeout(() => {
     });
     
     exec('xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen
-    
 }, time * 1000);
   
 res.status(200).json( { Status: 'OK'});  
