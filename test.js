@@ -1,7 +1,7 @@
 const { exec } = require('node:child_process')
 
 exec('xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen
-
+exec('sleep 2', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen
 exec('vlc rtsp://192.168.1.1:7447/6OHQ0QIWgxnIbTTp --fullscreen', (error, stdout, stderr) => {
     
     if (error) {
