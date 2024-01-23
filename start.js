@@ -28,7 +28,12 @@ exec('if pgrep vlc > /dev/null; then echo "VLC is already running"; else vlc & f
 exec('xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen
 
 // start stream - change IP to match RTSP Stream!
-  exec('vlc rtsps://192.168.1.1:7441/6OHQ0QIWgxnIbTTp?enableSrtp --fullscreen', (error, stdout, stderr) => {
+  // EDIT Unifi Stream url
+  //remove the second s in rtsps
+  //change port from 7441 to 7447
+  //remove (?enableSrtp)
+rtsp://192.168.1.1:7447/QxJCVMefFHfBnqrp
+  exec('vlc rtsp://192.168.1.1:7447/6OHQ0QIWgxnIbTTp --fullscreen', (error, stdout, stderr) => {
     if (error) {
         console.error(`exec error: ${error}`);
         return;
