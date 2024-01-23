@@ -26,4 +26,4 @@ setTimeout(() => {
     });
     
     exec('xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen
-})
+}, time * 1000);
