@@ -10,7 +10,7 @@ app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
 
-exec('xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen
+exec('export DISPLAY=:0;xset q;xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen
 
 app.post('/api/ring_ring', (req, res) => {
 
