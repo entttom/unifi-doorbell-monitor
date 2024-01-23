@@ -1,6 +1,5 @@
 # unifi-doorbell-monitor
-Unifi Doorbell Monitor for Live View when ringing
-
+Install wget  -q -O - https://raw.githubusercontent.com/entttom/unifi-doorbell-monitor/main/install.sh | bash
 
 Fot Autostart:
 # Installing pm2    
