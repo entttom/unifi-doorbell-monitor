@@ -1,27 +1,25 @@
-# unifi-doorbell-monitor
-Install wget  -q -O - https://raw.githubusercontent.com/entttom/unifi-doorbell-monitor/main/install.sh | bash
 
-Get unifi rtsp url from unifi protect
-modify URL
-  
-  //remove the second s in rtsps
-  //change port from 7441 to 7447
-  //remove (?enableSrtp)
-for example rtsps://192.168.1.1:7441/sdFHFJ8juKDBDDJD?enableSrtp
-should look like rtsp://192.168.1.1:7447/sdFHFJ8juKDBDDJD
-Fot Autostart:
-# Installing pm2    
-npm install -g pm2 # may require sudo
+# Unifi doorbell monitor
+I used a raspberry pi 3 with raspbian OS. Every other linux pc should do it as well.
 
-# Starting the app
-pm2 start ~/pi/start.js
-pm2 save    # saves the running processes
-            # if not saved, pm2 will forget
-            # the running apps on next boot
+Install: `wget  -q -O - https://raw.githubusercontent.com/entttom/unifi-doorbell-monitor/main/install.sh | bash`
+
+ - Get unifi rtsp camera url from unifi protect
+ - modify URL:
+	 - remove the second s in rtsps   
+	 - change port from 7441 to 7447   
+	 - remove
+	   (?enableSrtp)
+
+*For example* `rtsps://192.168.1.1:7441/sdFHFJ8juKDBDDJD?enableSrtp`
+*Should look like* `rtsp://192.168.1.1:7447/sdFHFJ8juKDBDDJD`
+
+Autostart is automatic enabled.
 
 
-# check status 
-pm2 list
+Modifications:
 
-# IMPORTANT: If you want pm2 to start on system boot
-pm2 startup # starts pm2 on computer boot
+ - Edit time variable in start.js to adapt the monitor shut off time.
+ - If you want vlc in fullscreen use the parameter `--fullscreen` in
+   line 29 instead of  `--no-video-deco --no-embedded-video --video-x=0
+   --video-y=0 --width=924 --height=600`
