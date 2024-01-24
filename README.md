@@ -34,4 +34,21 @@ Use Home Assistant or Iobroker to call http://IP_ADRESS:3000/api/ring_ring/ when
 Variants: 
 There is also a Version (with button) which shows the video stream via vlc on the left side of the display and on the right side is a big button which performs a curl request - in my case to an iobroker API to open the garden gate. if you install this version you have to adapt the curl request and the window size of your display.
 
+In HA you can use a automation. Something like this:
+´
+alias: G4 Doorbell to Intercom
+description: ''
+trigger:
+  - platform: state
+    entity_id: binary_sensor.front_doorbell_doorbell
+    from: 'off'
+    to: 'on'
+condition: []
+action:
+  - service: shell_command.ac_on
+    data:
+      url: 'http://192.168.1.192/api/ring_ring'
+mode: single
+`
+
 **Attention: You should assign a static IP adress to your raspberry.**
