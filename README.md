@@ -14,7 +14,7 @@ Install: `wget  -q -O - https://raw.githubusercontent.com/entttom/unifi-doorbell
 *For example* `rtsps://192.168.1.1:7441/sdFHFJ8juKDBDDJD?enableSrtp`
 *Should look like* `rtsp://192.168.1.1:7447/sdFHFJ8juKDBDDJD`
 
- - **Edit Line 29 and adapt the URL.**
+ - *Edit Line 29 and adapt the URL.*
 
 Autostart is automatic enabled.
 
@@ -26,6 +26,8 @@ Modifications:
    line 29 instead of  `--no-video-deco --no-embedded-video --video-x=0
    --video-y=0 --width=924 --height=600`
 
+**How does it work**
 
-Use Home Assistant or Iobroker to call http://IP_ADRESS:3000/api/ring_ring/ to turn off the monitor for 30 seconds and sho the stream. 
+Use Home Assistant or Iobroker to call http://IP_ADRESS:3000/api/ring_ring/ when the bell is ringing to turn on the monitor for 30 seconds and show the stream. The monitor will turn off after 30 seconds.
+
 **Attention: You should assign a static IP adress to your raspberry.**
