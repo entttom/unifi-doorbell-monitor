@@ -37,7 +37,7 @@ exec('vlc rtsp://192.168.1.1:7447/6OHQ0QIWgxnIbTTp --no-video-deco --no-embedded
   
 });
 
-exec('./button && wmctrl -r Button -e 0,925,0,100,600', (error, stdout, stderr) => {
+exec('./button && wmctrl -r button -e 0,925,0,100,600', (error, stdout, stderr) => {
     //gravity,X,Y,width,height
     if (error) {
         console.error(`exec error: ${error}`);
