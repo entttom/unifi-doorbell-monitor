@@ -5,6 +5,8 @@ git clone https://github.com/entttom/unifi-doorbell-monitor/
 cd unifi-doorbell-monitor
 sudo npm i -g express body-parser pm2
 go mod init button
+go install fyne.io/fyne/v2@latest
+go mod tidy
 go build
 pm2 start start.js
 pm2 save
