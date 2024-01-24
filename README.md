@@ -14,6 +14,8 @@ Install: `wget  -q -O - https://raw.githubusercontent.com/entttom/unifi-doorbell
 *For example* `rtsps://192.168.1.1:7441/sdFHFJ8juKDBDDJD?enableSrtp`
 *Should look like* `rtsp://192.168.1.1:7447/sdFHFJ8juKDBDDJD`
 
+ - **Edit Line 29 and adapt the URL.**
+
 Autostart is automatic enabled.
 
 
