@@ -37,10 +37,22 @@ exec('vlc rtsp://192.168.1.1:7447/6OHQ0QIWgxnIbTTp --no-video-deco --no-embedded
   
 });
 
+exec('./Button && wmctrl -r Button -e 0,925,0,100,600', (error, stdout, stderr) => {
+    //gravity,X,Y,width,height
+    if (error) {
+        console.error(`exec error: ${error}`);
+        return;
+    }
+    console.log(`stdout: ${stdout}`);
+    console.error(`stderr: ${stderr}`)
+  
+});
+
+  
 const time = 30; // time after streaming stops
 
 setTimeout(() => {
-    exec('killall -9 vlc', (error, stdout, stderr) => {
+    exec('killall -9 vlc && killall -9 Button', (error, stdout, stderr) => {
         if (error) {
             console.error(`exec error: ${error}`);
             return;
