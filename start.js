@@ -26,7 +26,7 @@ exec('vlc', (error, stdout, stderr) => { //Start VLC
     console.error(`stderr: ${stderr}`)
   
 });
-exec('vlc rtsp://192.168.1.1:7447/6OHQ0QIWgxnIbTTp --no-video-deco --no-embedded-video --video-x=0 --video-y=0 --width=924 --height=600', (error, stdout, stderr) => {
+exec('vlc rtsp://192.168.1.1:7447/6OHQ0QIWgxnIbTTp --fullscreen', (error, stdout, stderr) => {
     
     if (error) {
         console.error(`exec error: ${error}`);
