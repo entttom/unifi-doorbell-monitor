@@ -1,6 +1,6 @@
 #!/bin/sh
 sudo apt update
-sudo apt install nodejs npm net-tools vlc golang-go gccgo-go -y
+sudo apt install nodejs npm net-tools vlc golang-go gccgo-go wmctrl -y
 git clone https://github.com/entttom/unifi-doorbell-monitor/
 cd unifi-doorbell-monitor
 sudo npm i -g express body-parser pm2
