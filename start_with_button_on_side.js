@@ -10,59 +10,31 @@ app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
 
+exec('python steam.py', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen
+exec('python browser.py', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen  
+
 exec('export DISPLAY=:0;xset q;xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen
 
 app.get('/api/ring_ring', (req, res) => {
-
+exec('pkill -f browser.py', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen
 exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen
-
-exec('vlc', (error, stdout, stderr) => { //Start VLC
-    
-    if (error) {
-        console.error(`exec error: ${error}`);
-        return;
-    }
-    console.log(`stdout: ${stdout}`);
-    console.error(`stderr: ${stderr}`)
-  
-});
-exec('vlc rtsp://192.168.1.1:7447/6OHQ0QIWgxnIbTTp --no-video-deco --no-embedded-video --video-x=0 --video-y=0 --width=924 --height=600', (error, stdout, stderr) => {
-    
-    if (error) {
-        console.error(`exec error: ${error}`);
-        return;
-    }
-    console.log(`stdout: ${stdout}`);
-    console.error(`stderr: ${stderr}`)
-  
+exec('python stream_start.py', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen
+res.status(200).json( { Status: 'OK'});  
 });
 
-exec('./button && wmctrl -r button -e 0,925,0,100,600', (error, stdout, stderr) => {
-    //gravity,X,Y,width,height
-    if (error) {
-        console.error(`exec error: ${error}`);
-        return;
-    }
-    console.log(`stdout: ${stdout}`);
-    console.error(`stderr: ${stderr}`)
-  
+app.get('/api/stop_browser', (req, res) => {
+exec('pkill -f browser.py', (error, stdout, stderr) => {if (error) {return;}}); 
+res.status(200).json( { Status: 'OK'});  
 });
-
-  
-const time = 30; // time after streaming stops
-
-setTimeout(() => {
-    exec('killall -9 vlc && killall -9 button', (error, stdout, stderr) => {
-        if (error) {
-            console.error(`exec error: ${error}`);
-            return;
-        }
-        console.log(`stdout: ${stdout}`);
-        console.error(`stderr: ${stderr}`);
-    });
-    
-    exec('xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen
-}, time * 1000);
-  
+app.get('/api/start_browser', (req, res) => {
+exec('python browser.py', (error, stdout, stderr) => {if (error) {return;}}); 
+res.status(200).json( { Status: 'OK'});  
+});
+app.get('/api/stop_stream_window', (req, res) => {
+exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
+res.status(200).json( { Status: 'OK'});  
+});
+app.get('/api/start_stream_window', (req, res) => {
+exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
 res.status(200).json( { Status: 'OK'});  
 });
