@@ -21,7 +21,12 @@ exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {
 exec('python stream_start.py', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen
 res.status(200).json( { Status: 'OK'});  
 });
-
+app.get('/api/stop_streaming_and_turn_off_monitor', (req, res) => {
+exec('python stream_stop.py', (error, stdout, stderr) => {if (error) {return;}});
+exec('python browser.py', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen  
+exec('export DISPLAY=:0;xset q;xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen  
+res.status(200).json( { Status: 'OK'});  
+});
 app.get('/api/stop_browser', (req, res) => {
 exec('pkill -f browser.py', (error, stdout, stderr) => {if (error) {return;}}); 
 res.status(200).json( { Status: 'OK'});  
@@ -30,11 +35,11 @@ app.get('/api/start_browser', (req, res) => {
 exec('python browser.py', (error, stdout, stderr) => {if (error) {return;}}); 
 res.status(200).json( { Status: 'OK'});  
 });
-app.get('/api/stop_stream_window', (req, res) => {
+app.get('/api/kill_stream_window', (req, res) => {
 exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
 res.status(200).json( { Status: 'OK'});  
 });
-app.get('/api/start_stream_window', (req, res) => {
+app.get('/api/open_stream_window', (req, res) => {
 exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
 res.status(200).json( { Status: 'OK'});  
 });
