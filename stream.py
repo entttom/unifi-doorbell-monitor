@@ -47,7 +47,8 @@ class VLCPlayer(QtWidgets.QMainWindow):
         self.media = self.vlc_instance.media_new(self.rtsp_url)
         self.media.get_mrl()
         self.player.set_media(self.media)
-        self.player.video_set_scale(1.5)
+        self.player.video_set_scale(0.5)
+        self.player.play()
 
         # Embed the VLC player into the PyQt frame
         if sys.platform.startswith('linux'):  # for Linux using the X Server
@@ -59,7 +60,6 @@ class VLCPlayer(QtWidgets.QMainWindow):
 
     def start_stream(self):
         QMetaObject.invokeMethod(self, 'enterFullScreenMode', Qt.QueuedConnection)
-        
         # Play the VLC player stream
         self.player.play()
         
@@ -110,9 +110,9 @@ if __name__ == "__main__":
     player.toggle_fullscreen()  # Startet das Fenster im Vollbildmodus
 
     # RPyC-Server
-    t = ThreadedServer(StreamingService, port=18812, protocol_config={'allow_public_attrs': True})
-    server_thread = threading.Thread(target=t.start)
-    server_thread.daemon = True
-    server_thread.start()
+    #t = ThreadedServer(StreamingService, port=18812, protocol_config={'allow_public_attrs': True})
+    #server_thread = threading.Thread(target=t.start)
+    #server_thread.daemon = True
+    #server_thread.start()
 
     sys.exit(app.exec_())
