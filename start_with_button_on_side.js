@@ -10,7 +10,7 @@ app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
 
-exec('export DISPLAY=:0.0', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen
+
 exec('python steam.py', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen
 exec('firefox --kiosk http://192.168.1.48', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen  
 
