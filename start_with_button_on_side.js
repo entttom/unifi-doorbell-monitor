@@ -11,21 +11,17 @@ app.listen(port, () => {
 });
 
 
-exec('python steam.py', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen
 exec('firefox --kiosk http://192.168.1.48', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen  
 
-exec('export DISPLAY=:0;xset q;xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen
-
 app.get('/api/ring_ring', (req, res) => {
-//exec('pkill -f firefox', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen
+//exec('pkill -f firefox', (error, stdout, stderr) => {if (error) 4{return;}}); // Turn on Screen
 exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen
 exec('python stream_start.py', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen
 res.status(200).json( { Status: 'OK'});  
 });
 app.get('/api/stop_streaming_and_turn_off_monitor', (req, res) => {
-exec('python stream_stop.py', (error, stdout, stderr) => {if (error) {return;}});
+exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
 exec('wmctrl -a firefox', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen  
-exec('export DISPLAY=:0;xset q;xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen  
 res.status(200).json( { Status: 'OK'});  
 });
 app.get('/api/stop_browser', (req, res) => {
