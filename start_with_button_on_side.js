@@ -33,7 +33,7 @@ exec('pkill -f firefox', (error, stdout, stderr) => {if (error) {return;}});
 res.status(200).json( { Status: 'OK'});  
 });
 app.get('/api/start_browser', (req, res) => {
-exec('firefox --kiosk http://192.168.1.48', (error, stdout, stderr) => {if (error) {return;}}); 
+exec('export DISPLAY=:0;firefox --kiosk http://192.168.1.48', (error, stdout, stderr) => {if (error) {return;}}); 
 res.status(200).json( { Status: 'OK'});  
 });
 app.get('/api/kill_stream_window', (req, res) => {
