@@ -51,7 +51,7 @@ class VLCPlayer(QtWidgets.QMainWindow):
 
         # Embed the VLC player into the PyQt frame
         if sys.platform.startswith('linux'):  # for Linux using the X Server
-            self.player.set_xwindow(self.vlc_frame.winId())
+            self.player.set_xwindow(int(self.vlc_frame.winId()))
         elif sys.platform == "win32":  # for Windows
             self.player.set_hwnd(self.vlc_frame.winId())
         elif sys.platform == "darwin":  # for MacOS
