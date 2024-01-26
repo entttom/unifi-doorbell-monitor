@@ -1,7 +1,20 @@
 
 
 # Unifi doorbell monitor
-I used a raspberry pi 3 with raspbian OS with this [Monitor](https://www.amazon.com/dp/B09XDK2FRR/ref=sr_1_2_sspa?crid=ZSL2YLX1X5C0&keywords=raspberry%20pi%2010%20zoll%20monitor&qid=1706083972&sprefix=raspberry%20pi%2010%20zoll%20monito,aps,160&sr=8-2-spons&sp_csd=d2lkZ2V0TmFtZT1zcF9hdGY&psc=1). Every other linux pc should do it as well.
+I used a raspberry pi 3 with raspbian OS with this [Monitor](https://www.amazon.de/Raspberry-Touchscreen-WIMAXIT-Tragbarer-doppeltem/dp/B09QPWRCB1?th=1). Every other linux pc should do it as well.
+
+***** Next step only you use the display above WIMAXIT M1012****
+Open the file "config.txt" in the root directory of the SD card on the computer, add the following at the end of the file, save and exit.
+
+`hdmi_force_edid_audio=1
+max_usb_current=1
+hdmi_force_hotplug=1
+config_hdmi_boost=7
+hdmi_group=2
+hdmi_mode=87
+hdmi_drive=2
+display_rotate=0
+hdmi_timings=1024 1 200 18 200 600 1 50 3 50 0 0 0 60 0 51200000 3`
 
 Install: `wget  -q -O - https://raw.githubusercontent.com/entttom/unifi-doorbell-monitor/main/install.sh | bash`
 
