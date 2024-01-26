@@ -79,7 +79,7 @@ class VLCPlayer(QtWidgets.QMainWindow):
 
     def open_gate(self):
         try:
-            response = requests.get("http://www.test.de")
+            response = requests.get("http://192.168.1.2:8087/set/openknx.0.Verbraucher.Garten_Garage.Gartent%C3%BCre(RM_Schalten)?value=true")
             print(f"Gate opened! Status code: {response.status_code}")
         except Exception as e:
             print(f"Error opening gate: {e}")
