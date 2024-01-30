@@ -34,6 +34,9 @@ Install: `wget  -q -O - https://raw.githubusercontent.com/entttom/unifi-doorbell
 
 Autostart is automatic enabled.
 
+nano ~/.bashrc
+export DISPLAY=:0 
+. ~/.bashrc
 
 Modifications:
 
