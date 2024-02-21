@@ -39,7 +39,7 @@ class VLCPlayer(QtWidgets.QMainWindow):
         self.button.setStyleSheet("background-color: grey; margin:5px; border:1px solid black; ")
 
         # VLC-Player-Instanz erstellen
-        self.vlc_instance = vlc.Instance()
+        self.vlc.Instance('--codec=avcodec')
         self.player = self.vlc_instance.media_player_new()
 
         # RTSP-Stream zum VLC-Player hinzufügen
