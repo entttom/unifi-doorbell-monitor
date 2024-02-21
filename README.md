@@ -1,7 +1,7 @@
 
 
 # Unifi doorbell monitor
-I used a raspberry pi 3 with raspbian OS with this [Monitor](https://www.amazon.de/Raspberry-Touchscreen-WIMAXIT-Tragbarer-doppeltem/dp/B09QPWRCB1?th=1). Every other linux pc should do it as well.
+I used a raspberry pi 5 with raspbian OS with this [Monitor](https://www.amazon.de/Raspberry-Touchscreen-WIMAXIT-Tragbarer-doppeltem/dp/B09QPWRCB1?th=1). Every other linux pc should do it as well.
 
 ***** Next step only you use the display above WIMAXIT M1012****
 Open the file "/boot/config.txt" or bookworm and above "/boot/firmware/config.txt" on the SD card on the computer, add the following at the end of the file, save and exit.
@@ -37,6 +37,8 @@ Autostart is automatic enabled.
 nano ~/.bashrc
 export DISPLAY=:0 
 . ~/.bashrc
+
+Disable Hardware Decoding in the VlC Tools/Settings and Save it.
 
 Modifications:
 
