@@ -4,7 +4,7 @@
 I used a raspberry pi 3 with raspbian OS with this [Monitor](https://www.amazon.de/Raspberry-Touchscreen-WIMAXIT-Tragbarer-doppeltem/dp/B09QPWRCB1?th=1). Every other linux pc should do it as well.
 
 ***** Next step only you use the display above WIMAXIT M1012****
-Open the file "config.txt" in the root directory of the SD card on the computer, add the following at the end of the file, save and exit.
+Open the file "/boot/config.txt" or bookworm and above "/boot/firmware/config.txt" on the SD card on the computer, add the following at the end of the file, save and exit.
 
 `hdmi_force_edid_audio=1
 max_usb_current=1
