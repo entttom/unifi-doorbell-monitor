@@ -13,6 +13,9 @@ app.listen(port, () => {
 
 exec('firefox --kiosk http://192.168.1.48', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen  
 
+setTimeout(() => {
+  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
+}, "10000"); 
 app.get('/api/ring_ring', (req, res) => {
 
 //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi3
