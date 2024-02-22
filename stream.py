@@ -39,20 +39,23 @@ class VLCPlayer(QtWidgets.QMainWindow):
         self.button.setStyleSheet("background-color: grey; margin:5px; border:1px solid black; ")
 
         # VLC-Player-Instanz erstellen
-        self.vlc.Instance('--codec=avcodec')
+        self.vlc_instance = vlc.Instance('')
         self.player = self.vlc_instance.media_player_new()
 
         # RTSP-Stream zum VLC-Player hinzufügen
-        self.rtsp_url = 'rtsp://192.168.1.1:7447/XXBCogapxwUaLQO2'
+        self.rtsp_url = 'rtsp://192.168.1.1:7447/6OHQ0QIWgxnIbTTp'
         self.media = self.vlc_instance.media_new(self.rtsp_url)
         self.media.get_mrl()
         self.player.set_media(self.media)
-        self.player.video_set_scale(0.5)
+        self.player.video_set_scale(1.0)
         self.player.play()
 
         # Embed the VLC player into the PyQt frame
         if sys.platform.startswith('linux'):  # for Linux using the X Server
             self.player.set_xwindow(int(self.vlc_frame.winId()))
+            #self.player.set_time(1000000)  # Verzögerung in Mikrosekunden (1 Sekunde)
+            #self.player.set_time(3000000)  # Begrenzung in Mikrosekunden (3 Sekunden)
+ 
         elif sys.platform == "win32":  # for Windows
             self.player.set_hwnd(self.vlc_frame.winId())
         elif sys.platform == "darwin":  # for MacOS
