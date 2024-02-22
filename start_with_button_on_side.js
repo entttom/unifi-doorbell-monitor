@@ -16,8 +16,11 @@ exec('firefox --kiosk http://192.168.1.48', (error, stdout, stderr) => {if (erro
 app.get('/api/ring_ring', (req, res) => {
 
 //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi3
-exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5 
-exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
+exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
+setTimeout(() => {
+  exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
+}, "1000"); 
+
 res.status(200).json( { Status: 'OK'});  
 });
 app.get('/api/stop_streaming_and_turn_off_monitor', (req, res) => {
