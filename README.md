@@ -14,6 +14,7 @@ hdmi_group=2
 hdmi_mode=87
 hdmi_drive=2
 display_rotate=0
+hdmi_blanking=1
 hdmi_timings=1024 1 200 18 200 600 1 50 3 50 0 0 0 60 0 51200000 3`
 ***************************
 
