@@ -41,6 +41,8 @@ export DISPLAY=:0
 
 Disable Hardware Decoding in the VlC Tools/Settings and Save it.
 
+Modify start_with_button_on_side.js depend if you are using a Pi3 or Pi5 - uncomment the lines 
+
 Modifications:
 
  - Edit time variable in start.js to adapt the monitor shut off time.
