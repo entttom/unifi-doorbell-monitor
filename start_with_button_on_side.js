@@ -10,12 +10,19 @@ app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
 
+let timer;
+const runTimer = () => {
+  timer = setTimeout(() => {
+    exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5
+  }, "2000000"); //Screen of after 33 min
+};
 
-exec('firefox --kiosk http://192.168.1.48', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen  
+exec('firefox --kiosk http://192.168.1.48', (error, stdout, stderr) => {if (error) {return;}}); // Start Firefox 
 
 setTimeout(() => {
   exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
 }, "10000"); 
+
 app.get('/api/ring_ring', (req, res) => {
 
 //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi3
@@ -23,7 +30,10 @@ exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, std
 setTimeout(() => {
   exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
 }, "1000"); 
-
+  
+clearTimeout(timer);
+runTimer();
+  
 res.status(200).json( { Status: 'OK'});  
 });
 app.get('/api/stop_streaming_and_turn_off_monitor', (req, res) => {
@@ -52,6 +62,8 @@ res.status(200).json( { Status: 'OK'});
 app.get('/api/monitor_on', (req, res) => {
 //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}});  //Pi3 
 exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
+clearTimeout(timer);
+runTimer();
 res.status(200).json( { Status: 'OK'});  
 });
 app.get('/api/monitor_off', (req, res) => {
