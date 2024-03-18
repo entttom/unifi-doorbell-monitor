@@ -18,6 +18,8 @@ class VLCPlayer(QtWidgets.QMainWindow):
         screen_width = screen.width()
         screen_height = screen.height()
 
+        self.setCursor(Qt.BlankCursor)
+        
         # Erstellen Sie eine zentrale Widget
         self.central_widget = QtWidgets.QWidget(self)
         self.setCentralWidget(self.central_widget)
