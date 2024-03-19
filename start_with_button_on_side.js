@@ -30,7 +30,7 @@ app.get('/api/ring_ring', (req, res) => {
 exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
 setTimeout(() => {
   exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
-}, "1000"); 
+}, "100"); 
   
 clearTimeout(timer);
 runTimer();
