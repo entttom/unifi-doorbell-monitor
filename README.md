@@ -51,8 +51,11 @@ Modifications:
    --video-y=0 --width=924 --height=600`
 
 I used a HC-SR501 for motion detection connected as following:
+
 	Sensor VCC PIN connected to the Pi 5V Pin2
+ 
 	Sensor OUT PIN connected to the Pi GPIO21/Pin40
+ 
 	Sensor GND PIN connected to the Pi Ground Pin6
 
 **How does it work**
