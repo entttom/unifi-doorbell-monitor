@@ -27,11 +27,17 @@ setTimeout(() => {
 }, "10000"); 
 
 // Add the edge detection callback to catch the motion detection events
+var armed = false;
+
 pir.watch(function(err, value) {
   if (value === 1) {
+    if (armed == false) {
     // The pin went high - motion detected
     console.log("Motion Detected: %d", value);
     exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
+    armed = true;
+    setTimeout(() => { armed = false}, "60000"); 
+      }
     clearTimeout(timer);
     runTimer();
   }
