@@ -3,7 +3,7 @@ sudo apt update
 sudo apt install nodejs npm net-tools vlc -y
 git clone https://github.com/entttom/unifi-doorbell-monitor/
 cd unifi-doorbell-monitor
-sudo npm i -g express body-parser pm2
+sudo npm i -g express body-parser pm2 onoff
 pm2 start start.js
 pm2 save
 pm2 autostart
