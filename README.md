@@ -50,6 +50,11 @@ Modifications:
    line 29 instead of  `--no-video-deco --no-embedded-video --video-x=0
    --video-y=0 --width=924 --height=600`
 
+I used a HC-SR501 for motion detection connected as following:
+	Sensor VCC PIN connected to the Pi 5V Pin2
+	Sensor OUT PIN connected to the Pi GPIO21/Pin40
+	Sensor GND PIN connected to the Pi Ground Pin6
+
 **How does it work**
 
 Use Home Assistant or Iobroker to call http://IP_ADRESS:3000/api/ring_ring/ when the bell is ringing to turn on the monitor for 30 seconds and show the stream. The monitor will turn off after 30 seconds.
