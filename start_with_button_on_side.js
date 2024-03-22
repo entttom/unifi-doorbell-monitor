@@ -2,6 +2,8 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const app = express();
 const { exec } = require('node:child_process')
+var Gpio = require('onoff').Gpio;
+var pir = new Gpio(21,'in','rising');
 
 app.use(bodyParser.json());
 
@@ -15,14 +17,25 @@ const runTimer = () => {
   timer = setTimeout(() => {
     exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5
     exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream 
-  }, "2000000"); //Screen of after 33 min
+  }, "300000"); //Screen auto of after 5 min
 };
 
 exec('firefox --kiosk http://192.168.1.48', (error, stdout, stderr) => {if (error) {return;}}); // Start Firefox 
 
 setTimeout(() => {
-  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
+  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5 after Start
 }, "10000"); 
+
+// Add the edge detection callback to catch the motion detection events
+pir.watch(function(err, value) {
+  if (value === 1) {
+    // The pin went high - motion detected
+    console.log("Motion Detected: %d", value);
+    exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
+    clearTimeout(timer);
+    runTimer();
+  }
+});
 
 app.get('/api/ring_ring', (req, res) => {
 
@@ -76,3 +89,11 @@ app.get('/api/monitor_off', (req, res) => {
     exec('wmctrl -a firefox', (error, stdout, stderr) => {if (error) {return;}}); 
     res.status(200).json( { Status: 'OK'});  
 });  
+
+function exit() {
+  console.log("Exiting");
+  pir.unexport();
+  process.exit();
+}
+
+process.on('SIGINT', exit);
