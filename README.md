@@ -50,7 +50,7 @@ Modifications:
    line 29 instead of  `--no-video-deco --no-embedded-video --video-x=0
    --video-y=0 --width=924 --height=600`
 
-I used a HC-SR501 for motion detection connected as following:
+I used a  [HC-SR501](https://de.aliexpress.com/w/wholesale-HC%2525252dSR501.html?spm=a2g0o.home.search.0) for motion detection connected as following:
 
 	Sensor VCC PIN connected to the Pi 5V Pin2
  
