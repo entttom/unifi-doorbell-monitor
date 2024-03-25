@@ -3,7 +3,7 @@ const bodyParser = require('body-parser');
 const app = express();
 const { exec } = require('node:child_process')
 var Gpio = require('onoff').Gpio;
-var pir = new Gpio(408,'in','rising'); // Find right PIN "cat /sys/kernel/debug/gpio" PIN21 is named 408 for whatever reason
+var pir = new Gpio(423,'in','rising'); // Find right PIN "cat /sys/kernel/debug/gpio" PIN18 is named 423 for whatever reason
 
 app.use(bodyParser.json());
 
