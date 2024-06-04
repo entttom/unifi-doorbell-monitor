@@ -45,7 +45,7 @@ class VLCPlayer(QtWidgets.QMainWindow):
         self.player = self.vlc_instance.media_player_new()
 
         # RTSP-Stream zum VLC-Player hinzufügen
-        self.rtsp_url = 'rtsp://192.168.1.1:7447/6OHQ0QIWgxnIbTTp'
+        self.rtsp_url = 'rtsp://192.168.1.1:7447/wPjeztI9LsE8az2v'
         self.media = self.vlc_instance.media_new(self.rtsp_url)
         self.media.get_mrl()
         self.player.set_media(self.media)
