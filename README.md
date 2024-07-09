@@ -19,7 +19,7 @@ hdmi_timings=1024 1 200 18 200 600 1 50 3 50 0 0 0 60 0 51200000 3`
 ***************************
 
 
-Install: `wget  -q -O - https://raw.githubusercontent.com/entttom/unifi-doorbell-monitor/main/install.sh | bash`
+Install: `wget  -q -O - https://raw.githubusercontent.com/entttom/unifi-doorbell-monitor/main/install_with_python.sh | bash`
 
  - Get unifi rtsp camera url from unifi protect
  - modify URL:
