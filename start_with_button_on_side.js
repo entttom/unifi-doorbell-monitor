@@ -2,8 +2,8 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const app = express();
 const { exec } = require('node:child_process')
-var Gpio = require('onoff').Gpio;
-var pir = new Gpio(417,'in','both'); // Find right PIN "cat /sys/kernel/debug/gpio" PIN12 is named 417 for whatever reason 
+//var Gpio = require('onoff').Gpio;
+//var pir = new Gpio(417,'in','both'); // Find right PIN "cat /sys/kernel/debug/gpio" PIN12 is named 417 for whatever reason 
 
 app.use(bodyParser.json());
 
@@ -28,7 +28,7 @@ setTimeout(() => {
 
 // Add the edge detection callback to catch the motion detection events
 var armed = false;
-
+/*
 pir.watch(function(err, value) {
   if (value === 1) {
     if (armed == false) {
@@ -42,7 +42,7 @@ pir.watch(function(err, value) {
     runTimer();
   }
 });
-
+*/
 app.get('/api/ring_ring', (req, res) => {
 
 //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi3
