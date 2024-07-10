@@ -20,11 +20,14 @@ const runTimer = () => {
   }, "300000"); //Screen auto of after 5 min
 };
 
+setTimeout(() => {
 exec('firefox --kiosk http://192.168.1.48', (error, stdout, stderr) => {if (error) {return;}}); // Start Firefox 
+}, "10000"); 
+
 
 setTimeout(() => {
   exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5 after Start
-}, "10000"); 
+}, "30000"); 
 
 // Add the edge detection callback to catch the motion detection events
 var armed = false;
