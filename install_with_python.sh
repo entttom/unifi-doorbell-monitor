@@ -3,7 +3,8 @@ sudo apt update
 sudo apt install nodejs npm net-tools vlc wmctrl -y
 git clone https://github.com/entttom/unifi-doorbell-monitor/
 cd unifi-doorbell-monitor
-npm i express body-parser pm2 onoff
+sudo npm i -g pm2
+npm i express body-parser onoff
 pip install python-vlc rpyc PyQt5
 pm2 start start_with_button_on_side.js
 pm2 startup
