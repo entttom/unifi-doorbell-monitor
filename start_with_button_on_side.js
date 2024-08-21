@@ -5,6 +5,8 @@ const { exec } = require('node:child_process')
 //var Gpio = require('onoff').Gpio;
 //var pir = new Gpio(417,'in','both'); // Find right PIN "cat /sys/kernel/debug/gpio" PIN12 is named 417 for whatever reason 
 
+let busy = false;
+
 app.use(bodyParser.json());
 
 const port = process.env.PORT || 3000;
@@ -16,7 +18,8 @@ let timer;
 const runTimer = () => {
   timer = setTimeout(() => {
     exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5
-    exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream 
+    exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+    busy = false;
   }, "300000"); //Screen auto of after 5 min
 };
 
@@ -83,10 +86,13 @@ exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}});
 res.status(200).json( { Status: 'OK'});  
 });
 app.get('/api/monitor_on', (req, res) => {
-//exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}});  //Pi3 
+//exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}});  //Pi3
+if{busy == false} (  
 exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
+busy = true;
 clearTimeout(timer);
 runTimer();
+);
 res.status(200).json( { Status: 'OK'});  
 });
 app.get('/api/monitor_off', (req, res) => {
