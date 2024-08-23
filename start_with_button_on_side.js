@@ -90,9 +90,9 @@ app.get('/api/monitor_on', (req, res) => {
 if(busy == false) {  
 exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
 busy = true;
+};
 clearTimeout(timer);
 runTimer();
-};
 res.status(200).json( { Status: 'OK'});  
 });
 app.get('/api/monitor_off', (req, res) => {
