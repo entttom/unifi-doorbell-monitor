@@ -5,7 +5,7 @@ const { exec } = require('node:child_process')
 //var Gpio = require('onoff').Gpio;
 //var pir = new Gpio(417,'in','both'); // Find right PIN "cat /sys/kernel/debug/gpio" PIN12 is named 417 for whatever reason 
 
-let busy = false;
+let monitor_on = true;
 
 app.use(bodyParser.json());
 
@@ -19,7 +19,7 @@ const runTimer = () => {
   timer = setTimeout(() => {
     exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5
     exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
-    busy = false;
+    monitor_on = false;
   }, "300000"); //Screen auto of after 5 min
 };
 
@@ -30,6 +30,7 @@ exec('firefox --kiosk=http://192.168.1.48', (error, stdout, stderr) => {if (erro
 
 setTimeout(() => {
   exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5 after Start
+  monitor_on = false;
 }, "30000"); 
 
 // Add the edge detection callback to catch the motion detection events
@@ -65,6 +66,7 @@ app.get('/api/stop_streaming_and_turn_off_monitor', (req, res) => {
   exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
   //exec('export DISPLAY=:0;xset q;xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi3
   exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5 
+  monitor_on = false;
   res.status(200).json( { Status: 'OK'});  
 });
 
@@ -89,9 +91,9 @@ app.get('/api/open_stream_window', (req, res) => {
 
 app.get('/api/monitor_on', (req, res) => {
   //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}});  //Pi3
-  if(busy == false) {  
+  if(monitor_on == false) {  
   exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
-  busy = true;
+  monitor_on = true;
   };
   clearTimeout(timer);
   runTimer();
@@ -101,6 +103,7 @@ app.get('/api/monitor_on', (req, res) => {
 app.get('/api/monitor_off', (req, res) => {
   //exec('export DISPLAY=:0;xset q;xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); //Pi3 
   exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5
+  monitor_on = false;
   res.status(200).json( { Status: 'OK'});  
 });
 
