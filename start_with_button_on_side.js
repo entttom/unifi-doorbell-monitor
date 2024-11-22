@@ -19,6 +19,7 @@ const runTimer = () => {
   timer = setTimeout(() => {
     exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5
     exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+    exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
     monitor_on = false;
   }, "300000"); //Screen auto of after 5 min
 };
