@@ -63,6 +63,18 @@ app.get('/api/ring_ring', (req, res) => {
   res.status(200).json( { Status: 'OK'});  
 });
 
+app.get('/api/front_yard', (req, res) => {
+  //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi3
+  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
+  monitor_on = true;
+  setTimeout(() => {
+    exec('python stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); 
+  }, "100"); 
+  clearTimeout(timer);
+  runTimer();
+  res.status(200).json( { Status: 'OK'});  
+});
+
 app.get('/api/stop_streaming_and_turn_off_monitor', (req, res) => {
   exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
   //exec('export DISPLAY=:0;xset q;xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi3
@@ -112,6 +124,7 @@ app.get('/api/focus_browser', (req, res) => {
     exec('wmctrl -a firefox', (error, stdout, stderr) => {if (error) {return;}}); 
     res.status(200).json( { Status: 'OK'});  
 });  
+
 
 function exit() {
   console.log("Exiting");
