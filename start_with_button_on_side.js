@@ -5,7 +5,8 @@ const { exec } = require('node:child_process')
 //var Gpio = require('onoff').Gpio;
 //var pir = new Gpio(417,'in','both'); // Find right PIN "cat /sys/kernel/debug/gpio" PIN12 is named 417 for whatever reason 
 
-let monitor_on = true;
+var monitor_on = true;
+var stream = false;
 
 app.use(bodyParser.json());
 
@@ -21,6 +22,7 @@ const runTimer = () => {
     exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
     exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
     monitor_on = false;
+    
   }, "300000"); //Screen auto of after 5 min
 };
 
@@ -57,7 +59,10 @@ app.get('/api/ring_ring', (req, res) => {
   exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
   monitor_on = true;
   setTimeout(() => {
-    exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
+    if(stream == false) { 
+      exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
+      stream = true;
+    };
   }, "100"); 
   clearTimeout(timer);
   runTimer();
@@ -69,7 +74,10 @@ app.get('/api/front_yard', (req, res) => {
   exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
   monitor_on = true;
   setTimeout(() => {
-    exec('python stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); 
+    if(stream == false) { 
+      exec('python stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); 
+      stream = true;
+    };
   }, "100"); 
   clearTimeout(timer);
   runTimer();
