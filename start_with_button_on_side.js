@@ -66,7 +66,7 @@ app.get('/api/ring_ring', (req, res) => {
       exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
       stream = true;
     };
-  }, "500"); 
+  }, "2000"); 
   clearTimeout(timer);
   runTimer();
   res.status(200).json( { Status: 'OK'});  
@@ -83,7 +83,7 @@ app.get('/api/front_yard', (req, res) => {
       exec('python stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); 
       stream = true;
     };
-  }, "500"); 
+  }, "2000"); 
   clearTimeout(timer);
   runTimer();
   res.status(200).json( { Status: 'OK'});  
