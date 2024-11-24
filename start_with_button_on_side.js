@@ -22,6 +22,7 @@ const runTimer = () => {
     exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
     exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
     monitor_on = false;
+    stream = false;
     
   }, "300000"); //Screen auto of after 5 min
 };
@@ -89,6 +90,7 @@ app.get('/api/stop_streaming_and_turn_off_monitor', (req, res) => {
   //exec('export DISPLAY=:0;xset q;xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi3
   exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5 
   monitor_on = false;
+  stream = false;
   res.status(200).json( { Status: 'OK'});  
 });
 
@@ -102,12 +104,21 @@ app.get('/api/stop_browser', (req, res) => {
 });
 
 app.get('/api/kill_stream_window', (req, res) => {
-  exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
+  exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}});
+  exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+  stream = false;
   res.status(200).json( { Status: 'OK'});  
 });
 
 app.get('/api/open_stream_window', (req, res) => {
+  stream = false;
   exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
+  res.status(200).json( { Status: 'OK'});  
+});
+
+app.get('/api/open_stream_window_front_yard', (req, res) => {
+  stream = false;
+  exec('python stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); 
   res.status(200).json( { Status: 'OK'});  
 });
 
