@@ -57,8 +57,10 @@ pir.watch(function(err, value) {
 
 app.get('/api/ring_ring', (req, res) => {
   //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi3
+  if(monitor_on == false) {  
   exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
   monitor_on = true;
+  };
   setTimeout(() => {
     if(stream == false) { 
       exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
@@ -72,8 +74,10 @@ app.get('/api/ring_ring', (req, res) => {
 
 app.get('/api/front_yard', (req, res) => {
   //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi3
+  if(monitor_on == false) {  
   exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
   monitor_on = true;
+  };
   setTimeout(() => {
     if(stream == false) { 
       exec('python stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); 
