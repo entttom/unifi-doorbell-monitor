@@ -65,6 +65,9 @@ app.get('/api/ring_ring', (req, res) => {
     if(stream == false) { 
       exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
       stream = true;
+      setTimeout(() => {
+            exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+      }, "300000"); 
     };
   }, "2000"); 
   clearTimeout(timer);
@@ -82,6 +85,9 @@ app.get('/api/front_yard', (req, res) => {
     if(stream == false) { 
       exec('python stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); 
       stream = true;
+      setTimeout(() => {
+        exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+      }, "300000"); 
     };
   }, "2000"); 
   clearTimeout(timer);
