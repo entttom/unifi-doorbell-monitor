@@ -27,6 +27,16 @@ const runTimer = () => {
   }, "300000"); //Screen auto of after 5 min
 };
 
+let timer_stream;
+const runTimer_stream = () => {
+  timer_stream = setTimeout(() => {
+    exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+    exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+    stream = false;
+    
+  }, "300000"); //Screen auto of after 5 min
+};
+
 setTimeout(() => {
 exec('firefox --kiosk=http://192.168.1.48', (error, stdout, stderr) => {if (error) {return;}}); // Start Firefox 
 }, "10000"); 
@@ -38,7 +48,7 @@ setTimeout(() => {
 }, "30000"); 
 
 // Add the edge detection callback to catch the motion detection events
-var armed = false;
+// var armed = false;
 /*
 pir.watch(function(err, value) {
   if (value === 1) {
@@ -58,21 +68,24 @@ pir.watch(function(err, value) {
 app.get('/api/ring_ring', (req, res) => {
   //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi3
   if(monitor_on == false) {  
-  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
-  monitor_on = true;
-  };
-  setTimeout(() => {
-    if(stream == false) { 
+    exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
+    monitor_on = true;
+    setTimeout(() => {
+      if(stream == false) { 
+        exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
+        stream = true;
+      };
+    }, "2000"); 
+    }
+    else{
       exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
       stream = true;
-      setTimeout(() => {
-            exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
-      }, "300000"); 
     };
-  }, "2000"); 
-  clearTimeout(timer);
-  runTimer();
-  res.status(200).json( { Status: 'OK'});  
+    clearTimeout(timer);
+    runTimer();
+    clearTimeout(timer_stream);
+    runTimer_stream();
+    res.status(200).json( { Status: 'OK'}); 
 });
 
 app.get('/api/front_yard', (req, res) => {
@@ -80,23 +93,27 @@ app.get('/api/front_yard', (req, res) => {
   if(monitor_on == false) {  
   exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
   monitor_on = true;
-  };
   setTimeout(() => {
     if(stream == false) { 
       exec('python stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); 
       stream = true;
-      setTimeout(() => {
-        exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
-      }, "300000"); 
     };
   }, "2000"); 
+  }
+  else{
+    exec('python stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); 
+    stream = true;
+  };
   clearTimeout(timer);
   runTimer();
+  clearTimeout(timer_stream);
+  runTimer_stream();
   res.status(200).json( { Status: 'OK'});  
 });
 
 app.get('/api/stop_streaming_and_turn_off_monitor', (req, res) => {
   exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
+  exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
   //exec('export DISPLAY=:0;xset q;xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi3
   exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5 
   monitor_on = false;
@@ -153,6 +170,10 @@ app.get('/api/monitor_off', (req, res) => {
 app.get('/api/focus_browser', (req, res) => {
     exec('wmctrl -a firefox', (error, stdout, stderr) => {if (error) {return;}}); 
     res.status(200).json( { Status: 'OK'});  
+});  
+
+app.get('/api/debug', (req, res) => {
+  res.status(200).json( { Status: 'OK',Steam: stream, Monitor: monitor_on});  
 });  
 
 
