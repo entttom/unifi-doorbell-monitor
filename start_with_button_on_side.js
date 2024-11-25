@@ -77,7 +77,7 @@ app.get('/api/ring_ring', (req, res) => {
       };
     }, "2000"); 
     }
-    else{
+    if(monitor_on == true && stream == false) {
       exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
       stream = true;
     };
@@ -100,7 +100,7 @@ app.get('/api/front_yard', (req, res) => {
     };
   }, "2000"); 
   }
-  else{
+  if(monitor_on == true && stream == false) {
     exec('python stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); 
     stream = true;
   };
