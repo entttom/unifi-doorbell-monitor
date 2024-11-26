@@ -61,7 +61,7 @@ class VLCPlayer(QtWidgets.QMainWindow):
     def handle_mouse_click(self, event):
         # Sende HTTP GET-Request beim Mausklick
         try:
-            response = requests.get("http://127.0.0.1/api/kill_stream_window")
+            response = requests.get("http://127.0.0.1:3000/api/kill_stream_window")
             print(f"HTTP GET-Request sent. Status code: {response.status_code}")
         except requests.exceptions.RequestException as e:
             print(f"Error sending request: {e}")
