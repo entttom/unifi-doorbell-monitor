@@ -19,10 +19,11 @@ class VLCPlayer(QtWidgets.QMainWindow):
         screen_height = screen.height()
 
         self.setCursor(Qt.BlankCursor)
-        
+
         # Erstellen Sie eine zentrale Widget
         self.central_widget = QtWidgets.QWidget(self)
         self.setCentralWidget(self.central_widget)
+        self.central_widget.mousePressEvent = self.handle_mouse_click
 
         # Erstellen Sie ein Layout für das zentrale Widget
         self.layout = QtWidgets.QHBoxLayout(self.central_widget)
@@ -45,12 +46,6 @@ class VLCPlayer(QtWidgets.QMainWindow):
         self.player.set_media(self.media)
         self.player.video_set_scale(1.0)
         self.player.play()
-      
-        # Unsichtbaren Button erstellen und platzieren
-        self.hidden_button = QtWidgets.QPushButton(self.central_widget)
-        self.hidden_button.setGeometry(0, 0, self.central_widget.width(), self.central_widget.height())
-        self.hidden_button.setStyleSheet("background-color: transparent; border: none;")
-        self.hidden_button.clicked.connect(self.send_stop_request)
         
         # Embed the VLC player into the PyQt frame
         if sys.platform.startswith('linux'):  # for Linux using the X Server
@@ -63,13 +58,14 @@ class VLCPlayer(QtWidgets.QMainWindow):
         elif sys.platform == "darwin":  # for MacOS
             self.player.set_nsobject(int(self.vlc_frame.winId()))
 
-    def send_stop_request(self):
+    def handle_mouse_click(self, event):
+        # Sende HTTP GET-Request beim Mausklick
         try:
-            response = requests.get("http://127.0.0.1/api/kill_stream_window")
-            print(f"Stop request sent! Status code: {response.status_code}")
-        except Exception as e:
-            print(f"Error sending stop request: {e}")
-            
+            response = requests.get("http://192.168.1.2/stop")
+            print(f"HTTP GET-Request sent. Status code: {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            print(f"Error sending request: {e}")
+
     def start_stream(self):
         QMetaObject.invokeMethod(self, 'enterFullScreenMode', Qt.QueuedConnection)
         # Play the VLC player stream
