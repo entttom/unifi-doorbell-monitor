@@ -45,7 +45,13 @@ class VLCPlayer(QtWidgets.QMainWindow):
         self.player.set_media(self.media)
         self.player.video_set_scale(1.0)
         self.player.play()
-
+      
+        # Unsichtbaren Button erstellen und platzieren
+        self.hidden_button = QtWidgets.QPushButton(self.central_widget)
+        self.hidden_button.setGeometry(0, 0, self.central_widget.width(), self.central_widget.height())
+        self.hidden_button.setStyleSheet("background-color: transparent; border: none;")
+        self.hidden_button.clicked.connect(self.send_stop_request)
+        
         # Embed the VLC player into the PyQt frame
         if sys.platform.startswith('linux'):  # for Linux using the X Server
             self.player.set_xwindow(int(self.vlc_frame.winId()))
@@ -57,6 +63,13 @@ class VLCPlayer(QtWidgets.QMainWindow):
         elif sys.platform == "darwin":  # for MacOS
             self.player.set_nsobject(int(self.vlc_frame.winId()))
 
+    def send_stop_request(self):
+        try:
+            response = requests.get("http://127.0.0.1/api/kill_stream_window")
+            print(f"Stop request sent! Status code: {response.status_code}")
+        except Exception as e:
+            print(f"Error sending stop request: {e}")
+            
     def start_stream(self):
         QMetaObject.invokeMethod(self, 'enterFullScreenMode', Qt.QueuedConnection)
         # Play the VLC player stream
