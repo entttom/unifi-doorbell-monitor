@@ -30,15 +30,50 @@ class VLCPlayer(QtWidgets.QMainWindow):
         # Erstellen Sie ein Frame für den VLC-Player
         self.vlc_frame = QtWidgets.QFrame(self.central_widget)
         self.setStyleSheet("background-color: black; margin:-5px; border:1px solid black; ")
+        self.vlc_frame.mousePressEvent = self.on_video_click  # Füge Event-Handler hinzu
 
         self.layout.addWidget(self.vlc_frame, 9)  # 90% der Breite
 
-        # Button hinzufügen
-        self.button = QtWidgets.QPushButton("Gartentor öffnen", self.central_widget)
-        self.button.clicked.connect(self.open_gate)
-        self.layout.addWidget(self.button, 1)  # 10% der Breite
-        self.button.setMinimumHeight(screen_height)  # 100% der Höhe
-        self.button.setStyleSheet("background-color: grey; margin:5px; border:1px solid black; ")
+        # Button-Container mit vertikalem Layout erstellen
+        self.button_container = QtWidgets.QWidget(self.central_widget)
+        self.button_layout = QtWidgets.QVBoxLayout(self.button_container)
+        self.button_layout.setContentsMargins(0, 0, 0, 0)  # Entfernt die Margins
+        self.button_layout.setSpacing(0)  # Entfernt den Abstand zwischen Buttons
+        
+        # Gartentor-Button
+        self.gate_button = QtWidgets.QPushButton("Gartentor öffnen", self.button_container)
+        self.gate_button.clicked.connect(self.open_gate)
+        self.gate_button.setStyleSheet("""
+            QPushButton {
+                background-color: lightgrey;
+                border: 1px solid black;
+                min-width: 200px;
+                min-height: 300px;
+                font-size: 16px;
+            }
+        """)
+        self.gate_button.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        
+        # Eingangstür-Button
+        self.door_button = QtWidgets.QPushButton("Eingangstüre öffnen", self.button_container)
+        self.door_button.clicked.connect(self.open_door)
+        self.door_button.setStyleSheet("""
+            QPushButton {
+                background-color: grey;
+                border: 1px solid black;
+                min-width: 200px;
+                min-height: 300px;
+                font-size: 16px;
+            }
+        """)
+        self.door_button.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        
+        # Buttons zum vertikalen Layout hinzufügen
+        self.button_layout.addWidget(self.gate_button)
+        self.button_layout.addWidget(self.door_button)
+        
+        # Button-Container zum Hauptlayout hinzufügen
+        self.layout.addWidget(self.button_container, 1)  # 10% der Breite
 
         # VLC-Player-Instanz erstellen
         self.vlc_instance = vlc.Instance('')
@@ -94,6 +129,18 @@ class VLCPlayer(QtWidgets.QMainWindow):
             self.showNormal()
         else:
             self.showFullScreen()
+
+    # Neue Funktion für die Eingangstür
+    def open_door(self):
+        try:
+            response = requests.get("http://192.168.1.2:8087/set/openknx.0.Verbraucher.Erdgeschoss.1_Vorraum-Türöffner(Schalten)?value=true")
+            print(f"Door opened! Status code: {response.status_code}")
+        except Exception as e:
+            print(f"Error opening door: {e}")
+
+    # Neue Methode für Mausklick-Event
+    def on_video_click(self, event):
+        QtWidgets.QApplication.quit()  # Beendet die Anwendung
 
 class StreamingService(rpyc.Service):
     def on_connect(self, conn):
