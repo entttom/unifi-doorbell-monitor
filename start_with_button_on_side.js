@@ -117,7 +117,7 @@ app.get('/api/front_yard', (req, res) => {
   if(monitor_on == true && stream_front_door == true) {
     exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
     setTimeout(() => {
-      exec('python stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); 
+      exec('python stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); 
     }, "100"); 
     stream = true;
     stream_front_door = false;
