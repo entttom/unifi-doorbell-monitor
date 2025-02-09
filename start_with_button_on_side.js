@@ -139,6 +139,8 @@ app.get('/api/front_yard', (req, res) => {
 app.get('/api/stop_streaming_and_turn_off_monitor', (req, res) => {
   exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
   exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+  exec('pkill -f stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+
   //exec('export DISPLAY=:0;xset q;xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi3
   exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5 
   monitor_on = false;
