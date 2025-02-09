@@ -157,6 +157,8 @@ app.get('/api/start_browser', (req, res) => {
 app.get('/api/kill_stream_window', (req, res) => {
   exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}});
   exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+  exec('pkill -f python stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+
   stream = false;
   stream_front_door = false;
   res.status(200).json( { Status: 'OK'});  
