@@ -86,11 +86,14 @@ app.get('/api/ring_ring', (req, res) => {
       };
     }, "2000"); 
     }
-    if(monitor_on == true && stream == false) {
+    if(monitor_on == true) {
+      exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+      exec('pkill -f python stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
       exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
       stream = true;
       stream_front_door = true;
     };
+  
     clearTimeout(timer);
     runTimer();
     clearTimeout(timer_stream);
