@@ -23,7 +23,7 @@ const runTimer = () => {
     exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5
     exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
     exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
-    exec('pkill -f python stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+    exec('pkill -f stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
     monitor_on = false;
     stream = false;
     stream_front_door = false;
@@ -37,7 +37,7 @@ const runTimer_stream = () => {
   timer_stream = setTimeout(() => {
     exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
     exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
-    exec('pkill -f python stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+    exec('pkill -f stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
 
     stream = false;
     stream_front_door = false;
@@ -88,7 +88,7 @@ app.get('/api/ring_ring', (req, res) => {
     }
     if(monitor_on == true) {
       exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
-      exec('pkill -f python stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+      exec('pkill -f stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
       exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
       stream = true;
       stream_front_door = true;
@@ -160,7 +160,7 @@ app.get('/api/start_browser', (req, res) => {
 app.get('/api/kill_stream_window', (req, res) => {
   exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}});
   exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
-  exec('pkill -f python stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+  exec('pkill -f stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
 
   stream = false;
   stream_front_door = false;
