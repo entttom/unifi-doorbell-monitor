@@ -76,8 +76,15 @@ pir.watch(function(err, value) {
 app.get('/api/ring_ring', (req, res) => {
   //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi3
   if(monitor_on == false) {  
-    exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
-    monitor_on = true;
+    exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error) => {
+      if (error) {
+        console.error("Monitor ON failed:", error.message);
+        monitor_on = false;
+        return;
+      }
+      monitor_on = true;
+    });
+
     setTimeout(() => {
       if(stream == false) { 
         exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
@@ -105,8 +112,14 @@ app.get('/api/front_yard', (req, res) => {
   //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi3
   
   if(monitor_on == false) {  
-  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
+exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error) => {
+  if (error) {
+    console.error("Monitor ON failed:", error.message);
+    monitor_on = false;
+    return;
+  }
   monitor_on = true;
+});
   setTimeout(() => {
   if(stream == false) { 
       exec('python stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); 
@@ -183,22 +196,42 @@ app.get('/api/open_stream_window_front_yard', (req, res) => {
 });
 
 app.get('/api/monitor_on', (req, res) => {
-  //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}});  //Pi3
-  if(monitor_on == false) {  
-  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
-  monitor_on = true;
-  };
-  clearTimeout(timer);
-  runTimer();
-  res.status(200).json( { Status: 'OK'});  
+  if (monitor_on || isChangingMonitor) {
+    return res.status(200).json({ Status: 'AlreadyOnOrPending' });
+  }
+
+  isChangingMonitor = true;
+  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error) => {
+    isChangingMonitor = false;
+    if (error) {
+      console.error("Fehler beim Einschalten:", error.message);
+      monitor_on = false;
+      return res.status(500).json({ Status: 'Error', Message: error.message });
+    }
+    monitor_on = true;
+    return res.status(200).json({ Status: 'OK' });
+  });
 });
 
 app.get('/api/monitor_off', (req, res) => {
-  //exec('export DISPLAY=:0;xset q;xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); //Pi3 
-  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5
-  monitor_on = false;
-  res.status(200).json( { Status: 'OK'});  
+  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error) => {
+    if (error) {
+      console.error("Fehler beim Monitor ausschalten:", error.message);
+      return res.status(500).json({ Status: 'MonitorOffFailed' });
+    }
+    monitor_on = false;
+
+    // Jetzt auch die Streams beenden
+    exec('pkill -f stream.py');
+    exec('pkill -f stream_front_yard.py');
+    exec('pkill -f stream_front_yard_after_ring.py');
+    stream = false;
+    stream_front_door = false;
+
+    return res.status(200).json({ Status: 'OK' });
+  });
 });
+
 
 app.get('/api/focus_browser', (req, res) => {
     exec('wmctrl -a firefox', (error, stdout, stderr) => {if (error) {return;}}); 
