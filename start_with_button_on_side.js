@@ -8,6 +8,8 @@ const { exec } = require('node:child_process')
 var monitor_on = true;
 var stream = false;
 var stream_front_door = false;
+let isChangingMonitor = false;
+
 
 app.use(bodyParser.json());
 
