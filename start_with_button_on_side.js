@@ -504,182 +504,108 @@ app.get('/api/debug/hard_monitor_reset', (req, res) => {
   });
 });
 
-// Debug Wayland Environment
+// Debug Wayland Environment - Vereinfachte Version
 app.get('/api/debug/wayland_env', (req, res) => {
   const startTime = Date.now();
-  const debugInfo = {
-    timestamp: new Date().toISOString(),
-    tests: {},
-    environment_vars: {},
-    processes: {},
-    file_system: {},
-    recommendations: []
-  };
-
-  // Test verschiedene WAYLAND_DISPLAY Werte
-  const waylandDisplays = ['wayland-0', 'wayland-1', 'wayland-2'];
-  let testsCompleted = 0;
-  const totalTests = waylandDisplays.length + 6; // +6 für andere async Tests
-
-  function checkComplete() {
-    testsCompleted++;
-    if (testsCompleted >= totalTests) {
-      // Analyse und Empfehlungen
-      if (debugInfo.tests.wayland_0_success) {
-        debugInfo.recommendations.push('Verwende WAYLAND_DISPLAY="wayland-0" statt "wayland-1"');
-      } else if (debugInfo.tests.wayland_2_success) {
-        debugInfo.recommendations.push('Verwende WAYLAND_DISPLAY="wayland-2" statt "wayland-1"');
-      } else if (!debugInfo.processes.sway_running && !debugInfo.processes.wlroots_compositor) {
-        debugInfo.recommendations.push('CRITICAL: Kein Wayland-Compositor läuft! Starte Sway oder anderen wlroots-Compositor');
-      }
-
-      if (!debugInfo.file_system.wayland_sockets_exist) {
-        debugInfo.recommendations.push('Keine Wayland-Sockets gefunden in /run/user/*/');
-      }
-
-      res.status(200).json({
-        ...debugInfo,
-        duration_ms: Date.now() - startTime
-      });
-    }
-  }
-
-  // Test verschiedene WAYLAND_DISPLAY Werte
-  waylandDisplays.forEach(display => {
-    exec(`WAYLAND_DISPLAY="${display}" wlr-randr --help`, (error, stdout, stderr) => {
-      debugInfo.tests[`${display.replace('-', '_')}_success`] = !error;
-      debugInfo.tests[`${display.replace('-', '_')}_error`] = error ? error.message : null;
-      checkComplete();
-    });
-  });
-
-  // Prüfe Umgebungsvariablen
-  exec('env | grep -E "(WAYLAND|DISPLAY|XDG)"', (error, stdout) => {
-    if (!error && stdout) {
-      stdout.split('\n').forEach(line => {
-        if (line.includes('=')) {
-          const [key, value] = line.split('=', 2);
-          debugInfo.environment_vars[key] = value;
+  
+  // Teste nur die wichtigsten WAYLAND_DISPLAY Werte schnell
+  exec('WAYLAND_DISPLAY="wayland-0" wlr-randr --help', (error0, stdout0) => {
+    const wayland0Works = !error0;
+    
+    exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --help', (error1, stdout1) => {
+      const wayland1Works = !error1;
+      
+      exec('ps aux | grep sway | grep -v grep', (swayError, swayStdout) => {
+        const swayRunning = !swayError && swayStdout && swayStdout.includes('sway');
+        
+        const result = {
+          timestamp: new Date().toISOString(),
+          status: 'OK',
+          wayland_tests: {
+            'wayland-0': wayland0Works,
+            'wayland-1': wayland1Works,
+            'wayland-0_error': error0 ? error0.message : null,
+            'wayland-1_error': error1 ? error1.message : null
+          },
+          system_info: {
+            sway_running: swayRunning,
+            sway_processes: swayStdout || 'none'
+          },
+          recommendations: [],
+          duration_ms: Date.now() - startTime
+        };
+        
+        if (wayland0Works && !wayland1Works) {
+          result.recommendations.push('Verwende WAYLAND_DISPLAY="wayland-0" statt "wayland-1"');
+        } else if (!wayland0Works && !wayland1Works) {
+          result.recommendations.push('CRITICAL: Kein WAYLAND_DISPLAY funktioniert!');
         }
+        
+        res.status(200).json(result);
       });
-    }
-    checkComplete();
-  });
-
-  // Prüfe laufende Wayland/Sway Prozesse
-  exec('ps aux | grep -E "(sway|wayland|wlroots|compositor)" | grep -v grep', (error, stdout) => {
-    debugInfo.processes.sway_running = !error && stdout && stdout.includes('sway');
-    debugInfo.processes.wlroots_compositor = !error && stdout && (stdout.includes('wlroots') || stdout.includes('compositor'));
-    debugInfo.processes.process_list = stdout ? stdout.split('\n').filter(line => line.trim()) : [];
-    checkComplete();
-  });
-
-  // Prüfe Wayland-Sockets
-  exec('find /run/user -name "wayland-*" 2>/dev/null', (error, stdout) => {
-    debugInfo.file_system.wayland_sockets = stdout ? stdout.split('\n').filter(line => line.trim()) : [];
-    debugInfo.file_system.wayland_sockets_exist = debugInfo.file_system.wayland_sockets.length > 0;
-    checkComplete();
-  });
-
-  // Prüfe aktuellen User und Session
-  exec('whoami', (error, stdout) => {
-    debugInfo.environment_vars.current_user = stdout ? stdout.trim() : 'unknown';
-    checkComplete();
-  });
-
-  // Prüfe loginctl sessions
-  exec('loginctl list-sessions', (error, stdout) => {
-    debugInfo.processes.loginctl_sessions = stdout || 'No sessions or command failed';
-    checkComplete();
+    });
   });
 });
 
-// Auto-Fix Wayland Display
+// Auto-Fix Wayland Display - Vereinfacht
 app.get('/api/debug/fix_wayland', (req, res) => {
   const startTime = Date.now();
   const debugLog = [];
-  let workingDisplay = null;
   
-  debugLog.push(`[${new Date().toISOString()}] Starte automatische Wayland-Reparatur`);
+  debugLog.push(`Starte Wayland-Fix um ${new Date().toISOString()}`);
   
-  const waylandDisplays = ['wayland-0', 'wayland-1', 'wayland-2'];
-  let testsRemaining = waylandDisplays.length;
-  
-  // Teste jeden WAYLAND_DISPLAY Wert
-  waylandDisplays.forEach((display, index) => {
-    exec(`WAYLAND_DISPLAY="${display}" wlr-randr`, (error, stdout, stderr) => {
-      testsRemaining--;
+  // Teste wayland-0 zuerst
+  exec('WAYLAND_DISPLAY="wayland-0" wlr-randr', (error0, stdout0) => {
+    debugLog.push(`Test wayland-0: ${error0 ? 'FEHLGESCHLAGEN' : 'OK'}`);
+    
+    if (!error0 && stdout0 && stdout0.includes('HDMI-A-1')) {
+      debugLog.push('wayland-0 funktioniert! Teste Monitor ON...');
       
-      if (!error && stdout && stdout.includes('HDMI-A-1')) {
-        workingDisplay = display;
-        debugLog.push(`[${new Date().toISOString()}] ✅ WAYLAND_DISPLAY="${display}" funktioniert!`);
-        debugLog.push(`[${new Date().toISOString()}] Output: ${stdout.substring(0, 200)}...`);
-      } else {
-        debugLog.push(`[${new Date().toISOString()}] ❌ WAYLAND_DISPLAY="${display}" fehlgeschlagen: ${error ? error.message : 'Kein HDMI-A-1 gefunden'}`);
-      }
-      
-      // Wenn alle Tests abgeschlossen sind
-      if (testsRemaining === 0) {
-        if (workingDisplay) {
-          debugLog.push(`[${new Date().toISOString()}] 🔧 Verwende ${workingDisplay} für Monitor-Test`);
-          
-          // Teste Monitor ON/OFF mit dem funktionierenden Display
-          exec(`WAYLAND_DISPLAY="${workingDisplay}" wlr-randr --output HDMI-A-1 --on`, (onError) => {
-            if (onError) {
-              debugLog.push(`[${new Date().toISOString()}] ❌ Monitor ON Test fehlgeschlagen: ${onError.message}`);
-            } else {
-              debugLog.push(`[${new Date().toISOString()}] ✅ Monitor ON Test erfolgreich`);
-              monitor_on = true;
-            }
-            
-            // Verifikation
-            setTimeout(() => {
-              exec(`WAYLAND_DISPLAY="${workingDisplay}" wlr-randr`, (verifyError, verifyStdout) => {
-                let actualStatus = 'unknown';
-                if (!verifyError && verifyStdout) {
-                  const hdmiMatch = verifyStdout.match(/HDMI-A-1[\s\S]*?(?=\n\w|$)/);
-                  if (hdmiMatch) {
-                    actualStatus = hdmiMatch[0].includes('Enabled: yes') ? 'on' : 'off';
-                  }
-                }
-                
-                debugLog.push(`[${new Date().toISOString()}] Verifikation: Monitor ist ${actualStatus}`);
-                
-                res.status(200).json({
-                  status: workingDisplay ? 'FIXED' : 'FAILED',
-                  working_display: workingDisplay,
-                  fix_applied: !!workingDisplay,
-                  monitor_status_after_fix: {
-                    software: monitor_on,
-                    hardware: actualStatus
-                  },
-                  recommended_change: workingDisplay ? 
-                    `Ändere alle 'WAYLAND_DISPLAY="wayland-1"' zu 'WAYLAND_DISPLAY="${workingDisplay}"' in der Code-Datei` : 
-                    'Kein funktionierender WAYLAND_DISPLAY gefunden',
-                  debug_log: debugLog,
-                  duration_ms: Date.now() - startTime
-                });
-              });
-            }, 1000);
+      // Teste Monitor einschalten mit wayland-0
+      exec('WAYLAND_DISPLAY="wayland-0" wlr-randr --output HDMI-A-1 --on', (onError) => {
+        if (onError) {
+          debugLog.push(`Monitor ON mit wayland-0 fehlgeschlagen: ${onError.message}`);
+        } else {
+          debugLog.push('Monitor ON mit wayland-0 erfolgreich!');
+          monitor_on = true;
+        }
+        
+        res.status(200).json({
+          status: onError ? 'PARTIAL_SUCCESS' : 'SUCCESS',
+          working_display: 'wayland-0',
+          recommended_change: 'Ändere alle "wayland-1" zu "wayland-0" in der Datei',
+          monitor_command_result: onError ? 'FAILED' : 'SUCCESS',
+          debug_log: debugLog,
+          duration_ms: Date.now() - startTime
+        });
+      });
+    } else {
+      // wayland-0 funktioniert nicht, teste wayland-1
+      exec('WAYLAND_DISPLAY="wayland-1" wlr-randr', (error1, stdout1) => {
+        debugLog.push(`Test wayland-1: ${error1 ? 'FEHLGESCHLAGEN' : 'OK'}`);
+        
+        if (!error1 && stdout1 && stdout1.includes('HDMI-A-1')) {
+          debugLog.push('wayland-1 funktioniert bereits korrekt');
+          res.status(200).json({
+            status: 'NO_CHANGE_NEEDED',
+            working_display: 'wayland-1',
+            recommended_change: 'Aktueller wayland-1 funktioniert',
+            debug_log: debugLog,
+            duration_ms: Date.now() - startTime
           });
         } else {
-          debugLog.push(`[${new Date().toISOString()}] ❌ Kein funktionierender WAYLAND_DISPLAY gefunden!`);
-          
+          debugLog.push('Weder wayland-0 noch wayland-1 funktionieren!');
           res.status(500).json({
             status: 'NO_WORKING_DISPLAY',
             working_display: null,
-            fix_applied: false,
+            recommended_change: 'System-Problem: Kein Wayland-Display funktioniert',
             debug_log: debugLog,
             duration_ms: Date.now() - startTime,
-            next_steps: [
-              'Prüfe ob ein Wayland-Compositor (z.B. Sway) läuft',
-              'Starte den Raspberry Pi neu',
-              'Prüfe die Wayland-Konfiguration'
-            ]
+            next_steps: ['Raspberry Pi neustarten', 'Sway/Wayland-Compositor prüfen']
           });
         }
-      }
-    });
+      });
+    }
   });
 });
 
