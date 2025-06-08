@@ -504,6 +504,185 @@ app.get('/api/debug/hard_monitor_reset', (req, res) => {
   });
 });
 
+// Debug Wayland Environment
+app.get('/api/debug/wayland_env', (req, res) => {
+  const startTime = Date.now();
+  const debugInfo = {
+    timestamp: new Date().toISOString(),
+    tests: {},
+    environment_vars: {},
+    processes: {},
+    file_system: {},
+    recommendations: []
+  };
+
+  // Test verschiedene WAYLAND_DISPLAY Werte
+  const waylandDisplays = ['wayland-0', 'wayland-1', 'wayland-2'];
+  let testsCompleted = 0;
+  const totalTests = waylandDisplays.length + 6; // +6 für andere async Tests
+
+  function checkComplete() {
+    testsCompleted++;
+    if (testsCompleted >= totalTests) {
+      // Analyse und Empfehlungen
+      if (debugInfo.tests.wayland_0_success) {
+        debugInfo.recommendations.push('Verwende WAYLAND_DISPLAY="wayland-0" statt "wayland-1"');
+      } else if (debugInfo.tests.wayland_2_success) {
+        debugInfo.recommendations.push('Verwende WAYLAND_DISPLAY="wayland-2" statt "wayland-1"');
+      } else if (!debugInfo.processes.sway_running && !debugInfo.processes.wlroots_compositor) {
+        debugInfo.recommendations.push('CRITICAL: Kein Wayland-Compositor läuft! Starte Sway oder anderen wlroots-Compositor');
+      }
+
+      if (!debugInfo.file_system.wayland_sockets_exist) {
+        debugInfo.recommendations.push('Keine Wayland-Sockets gefunden in /run/user/*/');
+      }
+
+      res.status(200).json({
+        ...debugInfo,
+        duration_ms: Date.now() - startTime
+      });
+    }
+  }
+
+  // Test verschiedene WAYLAND_DISPLAY Werte
+  waylandDisplays.forEach(display => {
+    exec(`WAYLAND_DISPLAY="${display}" wlr-randr --help`, (error, stdout, stderr) => {
+      debugInfo.tests[`${display.replace('-', '_')}_success`] = !error;
+      debugInfo.tests[`${display.replace('-', '_')}_error`] = error ? error.message : null;
+      checkComplete();
+    });
+  });
+
+  // Prüfe Umgebungsvariablen
+  exec('env | grep -E "(WAYLAND|DISPLAY|XDG)"', (error, stdout) => {
+    if (!error && stdout) {
+      stdout.split('\n').forEach(line => {
+        if (line.includes('=')) {
+          const [key, value] = line.split('=', 2);
+          debugInfo.environment_vars[key] = value;
+        }
+      });
+    }
+    checkComplete();
+  });
+
+  // Prüfe laufende Wayland/Sway Prozesse
+  exec('ps aux | grep -E "(sway|wayland|wlroots|compositor)" | grep -v grep', (error, stdout) => {
+    debugInfo.processes.sway_running = !error && stdout && stdout.includes('sway');
+    debugInfo.processes.wlroots_compositor = !error && stdout && (stdout.includes('wlroots') || stdout.includes('compositor'));
+    debugInfo.processes.process_list = stdout ? stdout.split('\n').filter(line => line.trim()) : [];
+    checkComplete();
+  });
+
+  // Prüfe Wayland-Sockets
+  exec('find /run/user -name "wayland-*" 2>/dev/null', (error, stdout) => {
+    debugInfo.file_system.wayland_sockets = stdout ? stdout.split('\n').filter(line => line.trim()) : [];
+    debugInfo.file_system.wayland_sockets_exist = debugInfo.file_system.wayland_sockets.length > 0;
+    checkComplete();
+  });
+
+  // Prüfe aktuellen User und Session
+  exec('whoami', (error, stdout) => {
+    debugInfo.environment_vars.current_user = stdout ? stdout.trim() : 'unknown';
+    checkComplete();
+  });
+
+  // Prüfe loginctl sessions
+  exec('loginctl list-sessions', (error, stdout) => {
+    debugInfo.processes.loginctl_sessions = stdout || 'No sessions or command failed';
+    checkComplete();
+  });
+});
+
+// Auto-Fix Wayland Display
+app.get('/api/debug/fix_wayland', (req, res) => {
+  const startTime = Date.now();
+  const debugLog = [];
+  let workingDisplay = null;
+  
+  debugLog.push(`[${new Date().toISOString()}] Starte automatische Wayland-Reparatur`);
+  
+  const waylandDisplays = ['wayland-0', 'wayland-1', 'wayland-2'];
+  let testsRemaining = waylandDisplays.length;
+  
+  // Teste jeden WAYLAND_DISPLAY Wert
+  waylandDisplays.forEach((display, index) => {
+    exec(`WAYLAND_DISPLAY="${display}" wlr-randr`, (error, stdout, stderr) => {
+      testsRemaining--;
+      
+      if (!error && stdout && stdout.includes('HDMI-A-1')) {
+        workingDisplay = display;
+        debugLog.push(`[${new Date().toISOString()}] ✅ WAYLAND_DISPLAY="${display}" funktioniert!`);
+        debugLog.push(`[${new Date().toISOString()}] Output: ${stdout.substring(0, 200)}...`);
+      } else {
+        debugLog.push(`[${new Date().toISOString()}] ❌ WAYLAND_DISPLAY="${display}" fehlgeschlagen: ${error ? error.message : 'Kein HDMI-A-1 gefunden'}`);
+      }
+      
+      // Wenn alle Tests abgeschlossen sind
+      if (testsRemaining === 0) {
+        if (workingDisplay) {
+          debugLog.push(`[${new Date().toISOString()}] 🔧 Verwende ${workingDisplay} für Monitor-Test`);
+          
+          // Teste Monitor ON/OFF mit dem funktionierenden Display
+          exec(`WAYLAND_DISPLAY="${workingDisplay}" wlr-randr --output HDMI-A-1 --on`, (onError) => {
+            if (onError) {
+              debugLog.push(`[${new Date().toISOString()}] ❌ Monitor ON Test fehlgeschlagen: ${onError.message}`);
+            } else {
+              debugLog.push(`[${new Date().toISOString()}] ✅ Monitor ON Test erfolgreich`);
+              monitor_on = true;
+            }
+            
+            // Verifikation
+            setTimeout(() => {
+              exec(`WAYLAND_DISPLAY="${workingDisplay}" wlr-randr`, (verifyError, verifyStdout) => {
+                let actualStatus = 'unknown';
+                if (!verifyError && verifyStdout) {
+                  const hdmiMatch = verifyStdout.match(/HDMI-A-1[\s\S]*?(?=\n\w|$)/);
+                  if (hdmiMatch) {
+                    actualStatus = hdmiMatch[0].includes('Enabled: yes') ? 'on' : 'off';
+                  }
+                }
+                
+                debugLog.push(`[${new Date().toISOString()}] Verifikation: Monitor ist ${actualStatus}`);
+                
+                res.status(200).json({
+                  status: workingDisplay ? 'FIXED' : 'FAILED',
+                  working_display: workingDisplay,
+                  fix_applied: !!workingDisplay,
+                  monitor_status_after_fix: {
+                    software: monitor_on,
+                    hardware: actualStatus
+                  },
+                  recommended_change: workingDisplay ? 
+                    `Ändere alle 'WAYLAND_DISPLAY="wayland-1"' zu 'WAYLAND_DISPLAY="${workingDisplay}"' in der Code-Datei` : 
+                    'Kein funktionierender WAYLAND_DISPLAY gefunden',
+                  debug_log: debugLog,
+                  duration_ms: Date.now() - startTime
+                });
+              });
+            }, 1000);
+          });
+        } else {
+          debugLog.push(`[${new Date().toISOString()}] ❌ Kein funktionierender WAYLAND_DISPLAY gefunden!`);
+          
+          res.status(500).json({
+            status: 'NO_WORKING_DISPLAY',
+            working_display: null,
+            fix_applied: false,
+            debug_log: debugLog,
+            duration_ms: Date.now() - startTime,
+            next_steps: [
+              'Prüfe ob ein Wayland-Compositor (z.B. Sway) läuft',
+              'Starte den Raspberry Pi neu',
+              'Prüfe die Wayland-Konfiguration'
+            ]
+          });
+        }
+      }
+    });
+  });
+});
+
 function exit() {
   console.log("Exiting");
   pir.unexport();
