@@ -87,6 +87,11 @@ class VLCPlayer(QtWidgets.QMainWindow):
         self.player.video_set_scale(1.0)
         self.player.play()
 
+        # Überprüfen, ob der Stream läuft, und bei Bedarf neu starten
+        self.check_timer = QtCore.QTimer(self)
+        self.check_timer.timeout.connect(self.check_stream)
+        self.check_timer.start(5000)
+
         # Embed the VLC player into the PyQt frame
         if sys.platform.startswith('linux'):  # for Linux using the X Server
             self.player.set_xwindow(int(self.vlc_frame.winId()))
@@ -97,6 +102,22 @@ class VLCPlayer(QtWidgets.QMainWindow):
             self.player.set_hwnd(self.vlc_frame.winId())
         elif sys.platform == "darwin":  # for MacOS
             self.player.set_nsobject(int(self.vlc_frame.winId()))
+
+    def check_stream(self):
+        """Prüfen, ob der Stream läuft, und falls nötig neu starten."""
+        state = self.player.get_state()
+        width = self.player.video_get_width()
+        has_video = self.player.video_get_track_count() > 0
+        if state not in (vlc.State.Playing, vlc.State.Opening, vlc.State.Buffering) or (has_video and width == 0):
+            print("Stream not playing correctly, restarting...")
+            self.restart_stream()
+
+    def restart_stream(self):
+        """Stream neu starten."""
+        self.player.stop()
+        self.media = self.vlc_instance.media_new(self.rtsp_url)
+        self.player.set_media(self.media)
+        self.player.play()
 
     def start_stream(self):
         QMetaObject.invokeMethod(self, 'enterFullScreenMode', Qt.QueuedConnection)
