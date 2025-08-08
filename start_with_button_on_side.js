@@ -1,3 +1,6 @@
+const express = require('express');
+const bodyParser = require('body-parser');
+const app = express();
 const { exec } = require('node:child_process')
 //var Gpio = require('onoff').Gpio;
 //var pir = new Gpio(417,'in','both'); // Find right PIN "cat /sys/kernel/debug/gpio" PIN12 is named 417 for whatever reason 
