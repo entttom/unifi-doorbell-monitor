@@ -10,17 +10,81 @@ var stream = false;
 var stream_front_door = false;
 let isChangingMonitor = false;
 
+// GStreamer-Konfiguration (reines GStreamer ohne VLC)
+const USE_PURE_GSTREAMER = true; // Nutze reines GStreamer ohne Fallback
 
 app.use(bodyParser.json());
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
+  console.log('Stream-Backend: Pure GStreamer (ohne VLC-Fallback)');
 });
+
+// Hilfsfunktion für Stream-Kommandos (reines GStreamer)
+function getStreamCommand(streamType) {
+  // Nutze das reine GStreamer-Skript mit expliziter DISPLAY-Variable
+  const baseCmd = 'DISPLAY=:0';
+  switch(streamType) {
+    case 'main':
+      return `${baseCmd} python3 stream_gstreamer_pure.py main`;
+    case 'front_yard':
+      return `${baseCmd} python3 stream_gstreamer_pure.py front_yard`;
+    case 'front_yard_after_ring':
+      return `${baseCmd} python3 stream_gstreamer_pure.py front_yard_after_ring`;
+    default:
+      return `${baseCmd} python3 stream_gstreamer_pure.py main`;
+  }
+}
+
+function killStreamProcesses() {
+  // Beende alle GStreamer-Stream-Prozesse
+  const killCommands = [
+    'pkill -f stream_gstreamer_pure.py',
+    'touch /tmp/exit_stream_front_yard',  // Exit-Signal für front_yard
+    'touch /tmp/exit_stream_main',        // Exit-Signal für main
+    'touch /tmp/exit_stream_front_yard_after_ring'  // Exit-Signal für front_yard_after_ring
+  ];
+  
+  killCommands.forEach(cmd => {
+    exec(cmd, (error, stdout, stderr) => {
+      // Ignoriere Fehler - Prozess war möglicherweise nicht aktiv
+    });
+  });
+}
+
+function cleanupExitFiles() {
+  // Lösche alle Exit-Dateien vor Stream-Start
+  exec('rm -f /tmp/exit_stream_*', (error, stdout, stderr) => {
+    // Ignoriere Fehler
+  });
+}
+
+function checkStreamProcessesSync() {
+  // Synchronisiere Stream-Status mit tatsächlich laufenden Prozessen
+  exec('ps aux | grep "stream_gstreamer_pure.py" | grep -v grep', (error, stdout, stderr) => {
+    const streamProcessesRunning = !error && stdout && stdout.trim().length > 0;
+    
+    if (!streamProcessesRunning && (stream || stream_front_door)) {
+      // Prozesse sind beendet aber Status-Variablen noch aktiv
+      console.log('[SYNC] Stream-Prozesse beendet, setze Status-Variablen zurück');
+      stream = false;
+      stream_front_door = false;
+    } else if (streamProcessesRunning && !stream && !stream_front_door) {
+      // Prozesse laufen aber Status-Variablen sind inaktiv (sollte nicht passieren)
+      console.log('[SYNC] Stream-Prozesse gefunden, setze Status-Variablen');
+      stream = true;
+    }
+  });
+}
 
 //Timer for Monitor off and kill streams
 let timer;
 let timer_start_time = null;
+
+// Stream-Synchronisation Timer (alle 10 Sekunden)
+setInterval(checkStreamProcessesSync, 10000);
+console.log('[INIT] Stream-Synchronisation Timer gestartet (alle 10s)');
 const runTimer = () => {
   timer_start_time = Date.now();
   timer = setTimeout(() => {
@@ -35,9 +99,7 @@ const runTimer = () => {
       monitor_on = false;
     });
     
-    exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
-    exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
-    exec('pkill -f stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+    killStreamProcesses(); // Beende alle Stream-Prozesse
     
     stream = false;
     stream_front_door = false;
@@ -52,9 +114,7 @@ let timer_stream_start_time = null;
 const runTimer_stream = () => {
   timer_stream_start_time = Date.now();
   timer_stream = setTimeout(() => {
-    exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
-    exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
-    exec('pkill -f stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+    killStreamProcesses(); // Beende alle Stream-Prozesse
 
     stream = false;
     stream_front_door = false;
@@ -94,6 +154,7 @@ pir.watch(function(err, value) {
 app.get('/api/ring_ring', (req, res) => {
   //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi3
   console.log(`[RING_RING] Called at ${new Date().toISOString()}, monitor_on=${monitor_on}`);
+  console.log(`[RING_RING] Using Pure GStreamer backend`);
   
   if(monitor_on == false) {  
     console.log(`[RING_RING] Monitor ist OFF, versuche einzuschalten...`);
@@ -124,8 +185,11 @@ app.get('/api/ring_ring', (req, res) => {
 
     setTimeout(() => {
       if(stream == false) { 
-        console.log(`[RING_RING] Starte Stream nach 2s Delay...`);
-        exec('python stream.py', (error, stdout, stderr) => {
+        console.log(`[RING_RING] Starte GStreamer Stream nach 2s Delay...`);
+        cleanupExitFiles(); // Lösche alte Exit-Dateien
+        const streamCmd = getStreamCommand('main');
+        console.log(`[RING_RING] Führe Befehl aus: ${streamCmd}`);
+        exec(streamCmd, (error, stdout, stderr) => {
           if (error) {
             console.error(`[RING_RING] Stream start fehlgeschlagen:`, error.message);
           } else {
@@ -138,10 +202,12 @@ app.get('/api/ring_ring', (req, res) => {
     }, "2000"); 
     }
     if(monitor_on == true) {
-      console.log(`[RING_RING] Monitor ist bereits ON, starte Stream...`);
-      exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
-      exec('pkill -f stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
-      exec('python stream.py', (error, stdout, stderr) => {
+      console.log(`[RING_RING] Monitor ist bereits ON, starte GStreamer Stream...`);
+      killStreamProcesses(); // Beende alle laufenden Streams
+      cleanupExitFiles(); // Lösche alte Exit-Dateien
+      const streamCmd = getStreamCommand('main');
+      console.log(`[RING_RING] Führe Befehl aus: ${streamCmd}`);
+      exec(streamCmd, (error, stdout, stderr) => {
         if (error) {
           console.error(`[RING_RING] Stream start fehlgeschlagen (Monitor bereits ON):`, error.message);
         }
@@ -162,6 +228,7 @@ app.get('/api/ring_ring', (req, res) => {
 
 app.get('/api/front_yard', (req, res) => {
   //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi3
+  console.log(`[FRONT_YARD] Using Pure GStreamer backend`);
   
   if(monitor_on == false) {  
 exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error) => {
@@ -174,21 +241,30 @@ exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error) => 
 });
   setTimeout(() => {
   if(stream == false) { 
-      exec('python stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); 
+      cleanupExitFiles(); // Lösche alte Exit-Dateien
+      const streamCmd = getStreamCommand('front_yard');
+      console.log(`[FRONT_YARD] Führe Befehl aus: ${streamCmd}`);
+      exec(streamCmd, (error, stdout, stderr) => {if (error) {return;}}); 
       stream = true;
     };
   }, "2000"); 
   }
 
   if(monitor_on == true && stream == false) {
-    exec('python stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); 
+    cleanupExitFiles(); // Lösche alte Exit-Dateien
+    const streamCmd = getStreamCommand('front_yard');
+    console.log(`[FRONT_YARD] Führe Befehl aus: ${streamCmd}`);
+    exec(streamCmd, (error, stdout, stderr) => {if (error) {return;}}); 
     stream = true;
   };
 
   if(monitor_on == true && stream_front_door == true) {
-    exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
+    killStreamProcesses(); // Beende alle Stream-Prozesse
     setTimeout(() => {
-      exec('python stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); 
+      cleanupExitFiles(); // Lösche alte Exit-Dateien
+      const streamCmd = getStreamCommand('front_yard_after_ring');
+      console.log(`[FRONT_YARD] Führe Befehl aus (nach Ring): ${streamCmd}`);
+      exec(streamCmd, (error, stdout, stderr) => {if (error) {return;}}); 
     }, "100"); 
     stream = true;
     stream_front_door = false;
@@ -210,9 +286,7 @@ app.get('/api/stop_streaming_and_turn_off_monitor', (req, res) => {
   clearTimeout(timer_stream);
   timer_stream_start_time = null;
 
-  exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
-  exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
-  exec('pkill -f stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+  killStreamProcesses(); // Beende alle Stream-Prozesse
 
   //exec('export DISPLAY=:0;xset q;xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi3
   exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5 
@@ -233,9 +307,7 @@ app.get('/api/start_browser', (req, res) => {
 });
 
 app.get('/api/kill_stream_window', (req, res) => {
-  exec('pkill -f stream.py', (error, stdout, stderr) => {if (error) {return;}});
-  exec('pkill -f stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
-  exec('pkill -f stream_front_yard_after_ring.py', (error, stdout, stderr) => {if (error) {return;}}); // Kill Stream
+  killStreamProcesses(); // Beende alle Stream-Prozesse
 
   stream = false;
   stream_front_door = false;
@@ -243,16 +315,66 @@ app.get('/api/kill_stream_window', (req, res) => {
 });
 
 app.get('/api/open_stream_window', (req, res) => {
+  checkStreamProcessesSync(); // Synchronisiere Status vor dem Start
+  
+  // Prüfe ob bereits ein Stream läuft
+  if (stream || stream_front_door) {
+    console.log('[OPEN_STREAM] Stream bereits aktiv, ignoriere Anfrage');
+    return res.status(200).json({ Status: 'Already Running' });
+  }
+  
+  cleanupExitFiles(); // Lösche alte Exit-Dateien
   stream = true;
   stream_front_door = true;
-  exec('python stream.py', (error, stdout, stderr) => {if (error) {return;}}); 
+  const streamCmd = getStreamCommand('main');
+  console.log(`[OPEN_STREAM] Führe Befehl aus: ${streamCmd}`);
+  exec(streamCmd, (error, stdout, stderr) => {if (error) {return;}}); 
   res.status(200).json( { Status: 'OK'});  
 });
 
 app.get('/api/open_stream_window_front_yard', (req, res) => {
+  checkStreamProcessesSync(); // Synchronisiere Status vor dem Start
+  
+  // Prüfe ob bereits ein Stream läuft
+  if (stream) {
+    console.log('[OPEN_STREAM_FRONT_YARD] Stream bereits aktiv, ignoriere Anfrage');
+    return res.status(200).json({ Status: 'Already Running' });
+  }
+  
+  cleanupExitFiles(); // Lösche alte Exit-Dateien
   stream = true;
-  exec('python stream_front_yard.py', (error, stdout, stderr) => {if (error) {return;}}); 
-  res.status(200).json( { Status: 'OK'});  
+  const streamCmd = getStreamCommand('front_yard');
+  console.log(`[OPEN_STREAM_FRONT_YARD] Führe Befehl aus: ${streamCmd}`);
+  exec(streamCmd, (error, stdout, stderr) => {if (error) {return;}}); 
+  res.status(200).json( { Status: 'OK'});
+});
+
+// Neuer Endpoint zum Wechseln des Stream-Backends
+app.get('/api/switch_backend/:backend', (req, res) => {
+  const backend = req.params.backend.toLowerCase();
+  
+  if (backend === 'gstreamer' || backend === 'vlc') {
+    console.log(`[SWITCH_BACKEND] Wechsle zu ${backend.toUpperCase()}`);
+    
+    // Stoppe alle laufenden Streams
+    killStreamProcesses();
+    stream = false;
+    stream_front_door = false;
+    
+    // Backend global ändern würde einen Neustart erfordern
+    // Stattdessen Empfehlung für Konfigurationsänderung
+    res.status(200).json({ 
+      Status: 'Info', 
+      Message: `Das System nutzt bereits reines GStreamer ohne Fallback.`,
+      CurrentBackend: 'Pure GStreamer',
+      RequestedBackend: backend.toUpperCase()
+    });
+  } else {
+    res.status(400).json({ 
+      Status: 'Error', 
+      Message: 'Ungültiges Backend. Nutze "gstreamer" oder "vlc".' 
+    });
+  }
 });
 
 app.get('/api/monitor_on', (req, res) => {
@@ -415,9 +537,7 @@ app.get('/api/monitor_off', (req, res) => {
     monitor_on = false;
 
     // Jetzt auch die Streams beenden
-    exec('pkill -f stream.py');
-    exec('pkill -f stream_front_yard.py');
-    exec('pkill -f stream_front_yard_after_ring.py');
+    killStreamProcesses();
     stream = false;
     stream_front_door = false;
 
@@ -447,8 +567,10 @@ app.get('/api/debug', (req, res) => {
       }
     }
 
-    // Prüfe laufende Stream-Prozesse
-    exec('ps aux | grep -E "(stream\\.py|stream_front_yard|firefox)" | grep -v grep', (psError, psStdout, psStderr) => {
+    // Prüfe laufende Stream-Prozesse (Pure GStreamer)
+    const processPattern = 'ps aux | grep -E "(stream.*\\.py|firefox)" | grep -v grep';
+      
+    exec(processPattern, (psError, psStdout, psStderr) => {
       let runningProcesses = [];
       if (!psError && psStdout) {
         runningProcesses = psStdout.split('\n').filter(line => line.trim()).map(line => {
@@ -473,6 +595,12 @@ app.get('/api/debug', (req, res) => {
         const debugInfo = {
           timestamp: new Date().toISOString(),
           status: 'OK',
+          configuration: {
+            backend: 'Pure GStreamer',
+            backend_available: {
+              gstreamer: 'active'
+            }
+          },
           variables: {
             monitor_on: monitor_on,
             stream: stream,
@@ -562,6 +690,9 @@ app.get('/api/debug', (req, res) => {
   });
 });  
 
+// Alle anderen Endpunkte bleiben unverändert...
+// (Die restlichen Debug-Endpunkte sind identisch)
+
 // Neuer Debug-Endpoint um Monitor-Status zu synchronisieren
 app.get('/api/debug/sync_monitor', (req, res) => {
   const startTime = Date.now();
@@ -612,13 +743,16 @@ app.get('/api/debug/sync_monitor', (req, res) => {
       debugLog.push(`[${new Date().toISOString()}] OK: Software-Status und Hardware-Status sind synchron`);
     }
     
-    // Zusätzliche Prüfungen
-    exec('ps aux | grep -E "stream.*\\.py" | grep -v grep', (psError, psStdout) => {
+    // Zusätzliche Prüfungen  
+    const processPattern = 'ps aux | grep -E "stream.*\\.py" | grep -v grep';
+      
+    exec(processPattern, (psError, psStdout) => {
       const streamProcessCount = psStdout ? psStdout.split('\n').filter(line => line.trim()).length : 0;
       debugLog.push(`[${new Date().toISOString()}] Stream-Prozesse gefunden: ${streamProcessCount}`);
       
       const response = {
         status: needsSync ? 'SYNCHRONIZED' : 'OK',
+        backend: 'Pure GStreamer',
         before_sync: {
           software_monitor_on: req.query.original_monitor_on ? JSON.parse(req.query.original_monitor_on) : 'unknown',
           hardware_monitor_status: actualMonitorStatus
@@ -699,6 +833,7 @@ app.get('/api/debug/hard_monitor_reset', (req, res) => {
             
             res.status(200).json({
               status: isSuccess ? 'SUCCESS' : 'FAILED',
+              backend: 'Pure GStreamer',
               before_reset: {
                 software_monitor_on: req.query.before_monitor_on || 'unknown'
               },
@@ -735,6 +870,7 @@ app.get('/api/debug/wayland_env', (req, res) => {
         const result = {
           timestamp: new Date().toISOString(),
           status: 'OK',
+          backend: 'Pure GStreamer',
           wayland_tests: {
             'wayland-0': wayland0Works,
             'wayland-1': wayland1Works,
@@ -786,6 +922,7 @@ app.get('/api/debug/fix_wayland', (req, res) => {
         
         res.status(200).json({
           status: onError ? 'PARTIAL_SUCCESS' : 'SUCCESS',
+          backend: 'Pure GStreamer',
           working_display: 'wayland-0',
           recommended_change: 'Ändere alle "wayland-1" zu "wayland-0" in der Datei',
           monitor_command_result: onError ? 'FAILED' : 'SUCCESS',
@@ -802,6 +939,7 @@ app.get('/api/debug/fix_wayland', (req, res) => {
           debugLog.push('wayland-1 funktioniert bereits korrekt');
           res.status(200).json({
             status: 'NO_CHANGE_NEEDED',
+            backend: 'Pure GStreamer',
             working_display: 'wayland-1',
             recommended_change: 'Aktueller wayland-1 funktioniert',
             debug_log: debugLog,
@@ -811,6 +949,7 @@ app.get('/api/debug/fix_wayland', (req, res) => {
           debugLog.push('Weder wayland-0 noch wayland-1 funktionieren!');
           res.status(500).json({
             status: 'NO_WORKING_DISPLAY',
+            backend: 'Pure GStreamer',
             working_display: null,
             recommended_change: 'System-Problem: Kein Wayland-Display funktioniert',
             debug_log: debugLog,
@@ -831,6 +970,7 @@ app.get('/api/debug/auto_fix_timer', (req, res) => {
   debugLog.push(`[${new Date().toISOString()}] Starte Auto-Fix für fehlende Timer`);
   debugLog.push(`[${new Date().toISOString()}] Aktueller Status: monitor_on=${monitor_on}, stream=${stream}, stream_front_door=${stream_front_door}`);
   debugLog.push(`[${new Date().toISOString()}] Timer Status: monitor_timer=${timer !== null}, stream_timer=${timer_stream !== null}`);
+  debugLog.push(`[${new Date().toISOString()}] Backend: Pure GStreamer`);
   
   let fixes = [];
   
@@ -874,6 +1014,7 @@ app.get('/api/debug/auto_fix_timer', (req, res) => {
   const result = {
     timestamp: new Date().toISOString(),
     status: fixes.length > 0 ? 'FIXED' : 'NO_FIX_NEEDED',
+    backend: 'Pure GStreamer',
     fixes_applied: fixes,
     after_fix: {
       monitor_on: monitor_on,
@@ -902,6 +1043,7 @@ app.get('/api/debug/auto_fix_consistency', (req, res) => {
   
   debugLog.push(`[${new Date().toISOString()}] Starte Auto-Fix für Hardware/Software Konsistenz`);
   debugLog.push(`[${new Date().toISOString()}] Aktueller monitor_on: ${monitor_on}`);
+  debugLog.push(`[${new Date().toISOString()}] Backend: Pure GStreamer`);
   
   // Prüfe aktuellen Hardware-Status
   exec('WAYLAND_DISPLAY="wayland-1" wlr-randr', (error, stdout, stderr) => {
@@ -910,6 +1052,7 @@ app.get('/api/debug/auto_fix_consistency', (req, res) => {
       return res.status(500).json({
         status: 'ERROR',
         message: 'Hardware-Status-Prüfung fehlgeschlagen',
+        backend: 'Pure GStreamer',
         debug_log: debugLog,
         duration_ms: Date.now() - startTime
       });
@@ -926,6 +1069,7 @@ app.get('/api/debug/auto_fix_consistency', (req, res) => {
       return res.status(500).json({
         status: 'ERROR',
         message: 'HDMI-A-1 Output nicht gefunden',
+        backend: 'Pure GStreamer',
         debug_log: debugLog,
         duration_ms: Date.now() - startTime
       });
@@ -950,6 +1094,7 @@ app.get('/api/debug/auto_fix_consistency', (req, res) => {
       return res.status(200).json({
         status: 'CRITICAL_FIXED',
         action: 'Software-Status auf Hardware-Status synchronisiert',
+        backend: 'Pure GStreamer',
         before: { software_monitor_on: true, hardware_status: 'off' },
         after: { software_monitor_on: false, hardware_status: 'off' },
         debug_log: debugLog,
@@ -973,6 +1118,7 @@ app.get('/api/debug/auto_fix_consistency', (req, res) => {
       return res.status(200).json({
         status: 'MINOR_FIXED',
         action: 'Software-Status auf Hardware-Status synchronisiert und Timer gestartet',
+        backend: 'Pure GStreamer',
         before: { software_monitor_on: false, hardware_status: 'on' },
         after: { software_monitor_on: true, hardware_status: 'on' },
         debug_log: debugLog,
@@ -985,6 +1131,7 @@ app.get('/api/debug/auto_fix_consistency', (req, res) => {
       return res.status(200).json({
         status: 'NO_FIX_NEEDED',
         action: 'Keine Inkonsistenz gefunden',
+        backend: 'Pure GStreamer',
         current_state: { software_monitor_on: monitor_on, hardware_status: actualMonitorStatus },
         debug_log: debugLog,
         duration_ms: Date.now() - startTime
@@ -995,7 +1142,7 @@ app.get('/api/debug/auto_fix_consistency', (req, res) => {
 
 function exit() {
   console.log("Exiting");
-  pir.unexport();
+  // pir.unexport();
   process.exit();
 }
 
