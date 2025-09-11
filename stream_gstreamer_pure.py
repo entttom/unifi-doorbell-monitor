@@ -143,8 +143,8 @@ class GStreamerPlayer(QWidget):
                 # Mit Buttons: Verwende ximagesink mit besserer Skalierung
                 sink = "ximagesink name=videosink sync=false force-aspect-ratio=false"
             else:
-                # Ohne Buttons: Verwende ximagesink ohne Aspect-Ratio-Zwang für ganzes Bild
-                sink = "ximagesink name=videosink sync=false force-aspect-ratio=false"
+                # Ohne Buttons: Verwende ximagesink mit Aspect-Ratio für ganzes Bild ohne Zoom
+                sink = "ximagesink name=videosink sync=false force-aspect-ratio=true"
                 
             # Spezielle Pipeline-Konfiguration je nach Layout
             if self.show_buttons:
@@ -163,7 +163,7 @@ class GStreamerPlayer(QWidget):
                     {sink}
                 """
             else:
-                # Ohne Buttons: Pipeline mit Videoskalierung für ganzes Bild
+                # Ohne Buttons: Pipeline ohne Skalierung für natives Vollbild
                 pipeline_str = f"""
                     rtspsrc location={self.rtsp_url} latency=100 protocols=tcp retry=3 timeout=5000000000 ! 
                     queue max-size-buffers=5 leaky=downstream ! 
@@ -173,7 +173,6 @@ class GStreamerPlayer(QWidget):
                     avdec_h264 ! 
                     queue max-size-buffers=5 leaky=downstream ! 
                     videoconvert ! 
-                    videoscale method=lanczos ! 
                     queue max-size-buffers=5 leaky=downstream ! 
                     {sink}
                 """
