@@ -27,8 +27,12 @@ const CONFIG = {
   },
 };
 
-/** Schutz vor extrem großen ICS-Dateien (Anzeige per Scroll im Panel). */
+/** Schutz vor extrem großen ICS-Dateien (Messung läuft nur über diesen Ausschnitt). */
 const CALENDAR_MAX_INSTANCES = 400;
+
+let lastCalendarRawEvents = null;
+let calendarLayoutFrame = 0;
+let calendarRelayoutSuspended = 0;
 
 const WEATHER_CODE_LABELS = {
   0: "Klar",
@@ -95,6 +99,7 @@ function init() {
   updateClock();
   window.setInterval(updateClock, CONFIG.refresh.clock);
 
+  initCalendarLayoutObserver();
   loadCalendar();
   loadWeather();
   loadEnergy();
@@ -104,6 +109,107 @@ function init() {
   window.setInterval(loadEnergy, CONFIG.refresh.energy);
 
   elements.frontYardButton.addEventListener("click", triggerFrontYard);
+}
+
+function initCalendarLayoutObserver() {
+  if (typeof ResizeObserver === "undefined") {
+    return;
+  }
+  const ro = new ResizeObserver(() => {
+    if (calendarRelayoutSuspended > 0 || !lastCalendarRawEvents) {
+      return;
+    }
+    cancelAnimationFrame(calendarLayoutFrame);
+    calendarLayoutFrame = requestAnimationFrame(() => {
+      calendarLayoutFrame = 0;
+      void renderCalendar(lastCalendarRawEvents);
+    });
+  });
+  ro.observe(elements.calendarList);
+}
+
+function nextLayoutFrame() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+}
+
+function buildCalendarGroupsFromInstances(instancesSlice) {
+  const groups = [];
+  for (const inst of instancesSlice) {
+    const groupKey = formatGroupKey(inst.day);
+    let group = groups.find((entry) => entry.key === groupKey);
+    if (!group) {
+      group = {
+        key: groupKey,
+        label: formatGroupLabel(inst.day),
+        events: [],
+      };
+      groups.push(group);
+    }
+    group.events.push(inst);
+  }
+  return groups;
+}
+
+function calendarGroupsHtml(groups) {
+  return groups
+    .map((group) => {
+      const eventsMarkup = group.events
+        .map((inst) => {
+          return `
+            <div class="calendar-event">
+              <div class="calendar-time">${escapeHtml(inst.timeLabel)}</div>
+              <div class="calendar-summary">${escapeHtml(inst.event.summary)}</div>
+            </div>
+          `;
+        })
+        .join("");
+
+      return `
+        <article class="calendar-day">
+          <div class="calendar-day-header">
+            <h3 class="calendar-day-title">${escapeHtml(group.label)}</h3>
+          </div>
+          <div class="calendar-events">${eventsMarkup}</div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function countFittingCalendarInstances(capped) {
+  const el = elements.calendarList;
+  if (capped.length === 0) {
+    return 0;
+  }
+
+  if (el.clientHeight <= 4) {
+    return Math.min(capped.length, 24);
+  }
+
+  const tolerance = 3;
+  let lo = 1;
+  let hi = capped.length;
+  let best = 0;
+
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const groups = buildCalendarGroupsFromInstances(capped.slice(0, mid));
+    el.innerHTML = calendarGroupsHtml(groups);
+    const fits = el.scrollHeight <= el.clientHeight + tolerance;
+    if (fits) {
+      best = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  if (best === 0) {
+    best = 1;
+  }
+  return Math.min(best, capped.length);
 }
 
 function handleUnsupportedFileProtocol() {
@@ -142,11 +248,12 @@ async function loadCalendar() {
 
     const rawIcs = await response.text();
     const events = parseIcs(rawIcs);
-    renderCalendar(events);
+    await renderCalendar(events);
     elements.calendarStatus.textContent = "";
     elements.calendarStatus.classList.add("hidden");
   } catch (error) {
     console.error(error);
+    lastCalendarRawEvents = null;
     renderCalendarMessage("Kalender momentan nicht verfügbar.");
     elements.calendarStatus.textContent = "Fehler";
     elements.calendarStatus.classList.remove("hidden");
@@ -322,7 +429,9 @@ function expandEventToVisibleInstances(event, startOfToday) {
     }));
 }
 
-function renderCalendar(events) {
+async function renderCalendar(events) {
+  calendarRelayoutSuspended += 1;
+  try {
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -341,6 +450,7 @@ function renderCalendar(events) {
     .sort((left, right) => left.start - right.start);
 
   if (futureEvents.length === 0) {
+    lastCalendarRawEvents = null;
     renderCalendarMessage("Keine kommenden Termine gefunden.");
     return;
   }
@@ -353,56 +463,28 @@ function renderCalendar(events) {
       return a.sortTime - b.sortTime;
     });
 
-  const groups = [];
-  let rendered = 0;
+  const capped = instances.slice(0, CALENDAR_MAX_INSTANCES);
+  lastCalendarRawEvents = events;
 
-  for (const inst of instances) {
-    if (rendered >= CALENDAR_MAX_INSTANCES) {
-      break;
+  if (document.fonts && document.fonts.ready) {
+    try {
+      await document.fonts.ready;
+    } catch (_) {
+      /* ignore */
     }
-
-    const groupKey = formatGroupKey(inst.day);
-    let group = groups.find((entry) => entry.key === groupKey);
-
-    if (!group) {
-      group = {
-        key: groupKey,
-        label: formatGroupLabel(inst.day),
-        events: [],
-      };
-      groups.push(group);
-    }
-
-    group.events.push(inst);
-    rendered += 1;
   }
+  await nextLayoutFrame();
 
-  elements.calendarList.innerHTML = groups
-    .map((group) => {
-      const eventsMarkup = group.events
-        .map((inst) => {
-          return `
-            <div class="calendar-event">
-              <div class="calendar-time">${escapeHtml(inst.timeLabel)}</div>
-              <div class="calendar-summary">${escapeHtml(inst.event.summary)}</div>
-            </div>
-          `;
-        })
-        .join("");
-
-      return `
-        <article class="calendar-day">
-          <div class="calendar-day-header">
-            <h3 class="calendar-day-title">${escapeHtml(group.label)}</h3>
-          </div>
-          <div class="calendar-events">${eventsMarkup}</div>
-        </article>
-      `;
-    })
-    .join("");
+  const n = countFittingCalendarInstances(capped);
+  const finalGroups = buildCalendarGroupsFromInstances(capped.slice(0, n));
+  elements.calendarList.innerHTML = calendarGroupsHtml(finalGroups);
+  } finally {
+    calendarRelayoutSuspended -= 1;
+  }
 }
 
 function renderCalendarMessage(message) {
+  lastCalendarRawEvents = null;
   elements.calendarList.innerHTML = `
     <div class="empty-state">
       <p>${escapeHtml(message)}</p>
