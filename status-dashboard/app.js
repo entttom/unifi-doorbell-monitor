@@ -528,6 +528,8 @@ function updateBatteryFill(soc) {
 }
 
 async function triggerFrontYard() {
+  const lockStart = Date.now();
+  const minLockMs = 3000;
   elements.frontYardButton.disabled = true;
 
   try {
@@ -542,7 +544,11 @@ async function triggerFrontYard() {
   } catch (error) {
     console.error(error);
   } finally {
-    elements.frontYardButton.disabled = false;
+    const elapsed = Date.now() - lockStart;
+    const remaining = Math.max(0, minLockMs - elapsed);
+    window.setTimeout(() => {
+      elements.frontYardButton.disabled = false;
+    }, remaining);
   }
 }
 
