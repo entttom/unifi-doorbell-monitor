@@ -1,3 +1,20 @@
+/* Roboto: eingebettete Schriftdateien (siehe fonts/roboto/LICENSE.txt) */
+@font-face {
+  font-family: "Roboto";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/roboto/roboto-latin-400-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Roboto";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/roboto/roboto-latin-700-normal.woff2") format("woff2");
+}
+
 :root {
   color-scheme: light;
   --bg: #f2f0ea;
@@ -19,7 +36,7 @@
   --radius: 18px;
   --gap: 12px;
   --shell-padding: 12px;
-  font-family: "Trebuchet MS", "Lucida Grande", "Segoe UI", sans-serif;
+  font-family: "Roboto", system-ui, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }
 
 * {
@@ -286,39 +303,44 @@ h2 {
 }
 
 .weather-current {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
+  container-type: inline-size;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: stretch;
+  gap: 8px 12px;
   text-align: left;
+  min-height: clamp(4.5rem, 18vmin, 7rem);
 }
 
-.weather-top {
+.weather-leading {
   display: flex;
-  align-items: baseline;
-  justify-content: flex-start;
-  gap: 10px;
-  flex: 1;
+  align-items: center;
   min-width: 0;
 }
 
 .weather-temp {
-  font-size: 34px;
   font-weight: 700;
-  line-height: 0.9;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 2px;
+  /* Skaliert mit dem Display; dominiert die Zeilenhöhe neben Gefühlt/Wind */
+  font-size: clamp(2.75rem, min(20vmin, 28cqw), 6.25rem);
 }
 
 .weather-summary {
   margin-top: 0;
   font-size: 13px;
   color: var(--muted);
+  line-height: 1.25;
 }
 
 .weather-meta-row {
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
+  justify-content: center;
   gap: 4px;
   align-items: flex-start;
   flex: 0 0 auto;
