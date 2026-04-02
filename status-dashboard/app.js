@@ -25,11 +25,10 @@ const CONFIG = {
     weather: 10 * 60 * 1000,
     calendar: 15 * 60 * 1000,
   },
-  calendar: {
-    maxEvents: 8,
-    maxDays: 4,
-  },
 };
+
+/** Schutz vor extrem großen ICS-Dateien (Anzeige per Scroll im Panel). */
+const CALENDAR_MAX_INSTANCES = 400;
 
 const WEATHER_CODE_LABELS = {
   0: "Klar",
@@ -355,16 +354,17 @@ function renderCalendar(events) {
     });
 
   const groups = [];
+  let rendered = 0;
 
   for (const inst of instances) {
+    if (rendered >= CALENDAR_MAX_INSTANCES) {
+      break;
+    }
+
     const groupKey = formatGroupKey(inst.day);
     let group = groups.find((entry) => entry.key === groupKey);
 
     if (!group) {
-      if (groups.length >= CONFIG.calendar.maxDays) {
-        break;
-      }
-
       group = {
         key: groupKey,
         label: formatGroupLabel(inst.day),
@@ -373,11 +373,8 @@ function renderCalendar(events) {
       groups.push(group);
     }
 
-    if (groups.flatMap((entry) => entry.events).length >= CONFIG.calendar.maxEvents) {
-      break;
-    }
-
     group.events.push(inst);
+    rendered += 1;
   }
 
   elements.calendarList.innerHTML = groups

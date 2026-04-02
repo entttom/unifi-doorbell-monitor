@@ -84,12 +84,20 @@ body {
 
 .dashboard {
   width: min(100vw, 1024px);
-  height: min(100vh, 600px);
+  height: 100dvh;
+  max-height: 100dvh;
   margin: 0 auto;
   padding: var(--shell-padding);
   display: grid;
   grid-template-columns: minmax(0, 60fr) minmax(0, 40fr);
   gap: var(--gap);
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.dashboard > .panel-calendar,
+.dashboard > .sidebar {
+  min-height: 0;
 }
 
 .panel {
@@ -104,6 +112,12 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  height: 100%;
+  align-self: stretch;
+}
+
+.panel-calendar > .panel-header {
+  flex-shrink: 0;
 }
 
 .sidebar {
@@ -112,6 +126,9 @@ body {
   align-content: start;
   gap: var(--gap);
   min-height: 0;
+  height: 100%;
+  align-self: stretch;
+  overflow-y: auto;
 }
 
 .panel-clock,
@@ -179,10 +196,14 @@ h2 {
 
 .calendar-list {
   margin-top: 14px;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
+  flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .calendar-day {
@@ -548,5 +569,7 @@ h2 {
   .dashboard {
     width: 100vw;
     height: 100vh;
+    max-height: 100vh;
+    min-height: 0;
   }
 }
