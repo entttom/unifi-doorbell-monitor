@@ -544,17 +544,6 @@ h2 {
   opacity: 0.75;
 }
 
-.action-status {
-  width: auto;
-  font-size: 10px;
-  color: var(--muted);
-  text-align: center;
-}
-
-.action-status.hidden {
-  display: none;
-}
-
 @media (max-width: 1024px), (max-height: 600px) {
   .dashboard {
     width: 100vw;

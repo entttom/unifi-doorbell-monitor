@@ -83,7 +83,6 @@ const elements = {
   heatingChip: document.getElementById("heating-chip"),
   heatingState: document.getElementById("heating-state"),
   frontYardButton: document.getElementById("front-yard-button"),
-  actionStatus: document.getElementById("action-status"),
 };
 
 function init() {
@@ -112,8 +111,6 @@ function handleUnsupportedFileProtocol() {
   elements.protocolWarning.classList.remove("hidden");
   elements.calendarStatus.textContent = "Nur per http:// verfügbar";
   elements.energyStatus.textContent = "Nur per http:// verfügbar";
-  elements.actionStatus.textContent = "Nur per http://";
-  elements.actionStatus.classList.remove("hidden");
   elements.frontYardButton.disabled = true;
   renderCalendarMessage("Bitte das Dashboard über einen lokalen Webserver starten.");
   renderWeatherFallback("Bitte per http:// starten.");
@@ -532,8 +529,6 @@ function updateBatteryFill(soc) {
 
 async function triggerFrontYard() {
   elements.frontYardButton.disabled = true;
-  elements.actionStatus.textContent = "Sende ...";
-  elements.actionStatus.classList.remove("hidden");
 
   try {
     const response = await fetch(CONFIG.endpoints.frontYard, {
@@ -544,17 +539,10 @@ async function triggerFrontYard() {
     if (!response.ok) {
       throw new Error(`Request fehlgeschlagen (${response.status})`);
     }
-
-    elements.actionStatus.textContent = "Gesendet";
   } catch (error) {
     console.error(error);
-    elements.actionStatus.textContent = "Fehler";
   } finally {
-    window.setTimeout(() => {
-      elements.frontYardButton.disabled = false;
-      elements.actionStatus.textContent = "";
-      elements.actionStatus.classList.add("hidden");
-    }, 2500);
+    elements.frontYardButton.disabled = false;
   }
 }
 
