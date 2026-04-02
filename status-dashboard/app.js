@@ -1,9 +1,4 @@
 const CONFIG = {
-  weather: {
-    latitude: 48.2082,
-    longitude: 16.3738,
-    timezone: "Europe/Vienna",
-  },
   endpoints: {
     calendar: "/api/calendar",
     energy:
@@ -22,7 +17,6 @@ const CONFIG = {
   refresh: {
     clock: 1000,
     energy: 10000,
-    weather: 10 * 60 * 1000,
     calendar: 15 * 60 * 1000,
   },
   calendar: {
@@ -31,49 +25,12 @@ const CONFIG = {
   },
 };
 
-const WEATHER_CODE_LABELS = {
-  0: "Klar",
-  1: "Fast klar",
-  2: "Leicht bewölkt",
-  3: "Bewölkt",
-  45: "Neblig",
-  48: "Raureif",
-  51: "Nieselregen",
-  53: "Nieselregen",
-  55: "Nieselregen",
-  56: "Eisregen",
-  57: "Eisregen",
-  61: "Leichter Regen",
-  63: "Regen",
-  65: "Starker Regen",
-  66: "Eisregen",
-  67: "Eisregen",
-  71: "Leichter Schnee",
-  73: "Schnee",
-  75: "Starker Schnee",
-  77: "Schneekoerner",
-  80: "Schauer",
-  81: "Schauer",
-  82: "Starke Schauer",
-  85: "Schneeschauer",
-  86: "Schneeschauer",
-  95: "Gewitter",
-  96: "Gewitter",
-  99: "Gewitter",
-};
-
 const elements = {
   protocolWarning: document.getElementById("protocol-warning"),
   clockTime: document.getElementById("clock-time"),
   clockDate: document.getElementById("clock-date"),
   calendarList: document.getElementById("calendar-list"),
   calendarStatus: document.getElementById("calendar-status"),
-  weatherStatus: document.getElementById("weather-status"),
-  weatherTemp: document.getElementById("weather-temp"),
-  weatherSummary: document.getElementById("weather-summary"),
-  weatherFeelsLike: document.getElementById("weather-feels-like"),
-  weatherWind: document.getElementById("weather-wind"),
-  weatherDays: document.getElementById("weather-days"),
   batteryChip: document.getElementById("battery-chip"),
   energyStatus: document.getElementById("energy-status"),
   energyPv: document.getElementById("energy-pv"),
@@ -99,11 +56,9 @@ function init() {
   window.setInterval(updateClock, CONFIG.refresh.clock);
 
   loadCalendar();
-  loadWeather();
   loadEnergy();
 
   window.setInterval(loadCalendar, CONFIG.refresh.calendar);
-  window.setInterval(loadWeather, CONFIG.refresh.weather);
   window.setInterval(loadEnergy, CONFIG.refresh.energy);
 
   elements.frontYardButton.addEventListener("click", triggerFrontYard);
@@ -112,13 +67,11 @@ function init() {
 function handleUnsupportedFileProtocol() {
   elements.protocolWarning.classList.remove("hidden");
   elements.calendarStatus.textContent = "Nur per http:// verfügbar";
-  elements.weatherStatus.textContent = "Nur per http:// verfügbar";
   elements.energyStatus.textContent = "Nur per http:// verfügbar";
   elements.actionStatus.textContent = "Nur per http://";
   elements.actionStatus.classList.remove("hidden");
   elements.frontYardButton.disabled = true;
   renderCalendarMessage("Bitte das Dashboard über einen lokalen Webserver starten.");
-  renderWeatherFallback("Bitte per http:// starten.");
   renderEnergyFallback();
 }
 
@@ -367,86 +320,6 @@ function formatTime(date) {
   }).format(date);
 }
 
-async function loadWeather() {
-  elements.weatherStatus.textContent = "Lade Wetter ...";
-
-  const params = new URLSearchParams({
-    latitude: String(CONFIG.weather.latitude),
-    longitude: String(CONFIG.weather.longitude),
-    current: "temperature_2m,apparent_temperature,weather_code,wind_speed_10m",
-    hourly: "temperature_2m,weather_code",
-    daily: "weather_code,temperature_2m_max,temperature_2m_min",
-    timezone: CONFIG.weather.timezone,
-    forecast_days: "4",
-    wind_speed_unit: "kmh",
-  });
-
-  try {
-    const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params.toString()}`, {
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      throw new Error(`Wetter konnte nicht geladen werden (${response.status})`);
-    }
-
-    const data = await response.json();
-    renderWeather(data);
-    elements.weatherStatus.textContent = "";
-    elements.weatherStatus.classList.add("hidden");
-  } catch (error) {
-    console.error(error);
-    renderWeatherFallback();
-    elements.weatherStatus.textContent = "Fehler";
-    elements.weatherStatus.classList.remove("hidden");
-  }
-}
-
-function renderWeather(data) {
-  const current = data.current;
-  elements.weatherTemp.textContent = formatTemperature(current.temperature_2m);
-  elements.weatherSummary.textContent = weatherLabel(current.weather_code);
-  elements.weatherFeelsLike.textContent = formatTemperature(current.apparent_temperature);
-  elements.weatherWind.textContent = `${Math.round(current.wind_speed_10m)} km/h`;
-
-  const now = new Date();
-  const currentHourIndex = data.hourly.time.findIndex((entry) => new Date(entry) >= now);
-  // Nächste Stunden ist komplett entfernt.
-  void currentHourIndex;
-
-  const days = [];
-  for (let index = 1; index < Math.min(data.daily.time.length, 4); index += 1) {
-    days.push({
-      label: new Intl.DateTimeFormat("de-AT", {
-        weekday: "short",
-      }).format(new Date(data.daily.time[index])),
-      temperature: `${formatTemperature(data.daily.temperature_2m_max[index])} / ${formatTemperature(
-        data.daily.temperature_2m_min[index]
-      )}`,
-    });
-  }
-
-  elements.weatherDays.innerHTML = days
-    .map((day) => {
-      return `
-        <article class="weather-item">
-          <div class="weather-item-label">${escapeHtml(day.label)}</div>
-          <div class="weather-item-temp">${escapeHtml(day.temperature)}</div>
-        </article>
-      `;
-    })
-    .join("");
-}
-
-function renderWeatherFallback(message = "Wetter nicht verfügbar.") {
-  elements.weatherTemp.textContent = "--";
-  elements.weatherSummary.textContent = message;
-  elements.weatherFeelsLike.textContent = "--";
-  elements.weatherWind.textContent = "--";
-  elements.weatherDays.innerHTML =
-    '<div class="empty-state"><p>Keine Tageswerte verfügbar.</p></div>';
-}
-
 async function loadEnergy() {
   elements.energyStatus.textContent = "Lade Werte ...";
 
@@ -647,18 +520,6 @@ function formatGridPower(value) {
   }
 
   return "0 W";
-}
-
-function formatTemperature(value) {
-  if (!Number.isFinite(value)) {
-    return "--";
-  }
-
-  return `${Math.round(value)}°`;
-}
-
-function weatherLabel(code) {
-  return WEATHER_CODE_LABELS[code] || "Unbekannt";
 }
 
 function escapeHtml(value) {
