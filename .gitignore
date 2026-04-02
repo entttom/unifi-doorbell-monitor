@@ -55,3 +55,8 @@ Thumbs.db
 # Backup files
 *.bak
 backup/
+
+# status-dashboard (lokale/private Config)
+/status-dashboard/config/calendar-url.txt
+/status-dashboard/index_files/
+/status-dashboard/.git/

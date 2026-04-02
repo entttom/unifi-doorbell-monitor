@@ -1,0 +1,4 @@
+https://calendar.google.com/calendar/ical/example/private-abcdef/basic.ics
+
+Diese Datei wird vom lokalen Server serve.py gelesen.
+Das Dashboard muss deshalb über http://127.0.0.1:8123 laufen, nicht per file://.

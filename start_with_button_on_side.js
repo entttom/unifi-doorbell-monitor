@@ -2,6 +2,11 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const app = express();
 const { exec } = require('node:child_process')
+const path = require('node:path');
+const fs = require('node:fs/promises');
+const http = require('node:http');
+const https = require('node:https');
+const { URL } = require('node:url');
 //var Gpio = require('onoff').Gpio;
 //var pir = new Gpio(417,'in','both'); // Find right PIN "cat /sys/kernel/debug/gpio" PIN12 is named 417 for whatever reason 
 
@@ -14,6 +19,63 @@ let isChangingMonitor = false;
 const USE_PURE_GSTREAMER = true; // Nutze reines GStreamer ohne Fallback
 
 app.use(bodyParser.json());
+
+// Serve the HTML/CSS/JS dashboard from `status-dashboard/` under `/status/`.
+app.get('/status', (req, res) => {
+  res.redirect(302, '/status/');
+});
+app.use('/status', express.static(path.join(__dirname, 'status-dashboard')));
+
+const CALENDAR_URL_PATH = path.join(
+  __dirname,
+  'status-dashboard',
+  'config',
+  'calendar-url.txt'
+);
+
+function fetchText(urlString, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(urlString);
+    } catch (err) {
+      reject(err);
+      return;
+    }
+
+    const isHttps = parsed.protocol === 'https:';
+    const transport = isHttps ? https : http;
+
+    const request = transport.request(
+      {
+        method: 'GET',
+        hostname: parsed.hostname,
+        port: parsed.port || (isHttps ? 443 : 80),
+        path: `${parsed.pathname}${parsed.search}`,
+        headers: {
+          'User-Agent': 'raspi-status-dashboard/1.0',
+          Accept: 'text/calendar,text/plain;q=0.9,*/*;q=0.8',
+        },
+      },
+      (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => {
+          body += chunk;
+        });
+        response.on('end', () => {
+          resolve({ statusCode: response.statusCode || 0, body });
+        });
+      }
+    );
+
+    request.on('error', reject);
+    request.setTimeout(timeoutMs, () => {
+      request.destroy(new Error('Request timeout'));
+    });
+    request.end();
+  });
+}
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
@@ -124,7 +186,11 @@ const runTimer_stream = () => {
 };
 
 setTimeout(() => {
-exec('firefox --kiosk=http://192.168.1.48', (error, stdout, stderr) => {if (error) {return;}}); // Start Firefox 
+exec(`firefox --kiosk=http://127.0.0.1:${port}/status/`, (error, stdout, stderr) => {
+  if (error) {
+    return;
+  }
+}); // Start Firefox 
 }, "10000"); 
 
 
@@ -150,6 +216,40 @@ pir.watch(function(err, value) {
   }
 });
 */
+
+app.get('/api/calendar', async (req, res) => {
+  let calendarUrl;
+
+  try {
+    calendarUrl = (await fs.readFile(CALENDAR_URL_PATH, 'utf8')).trim();
+  } catch (err) {
+    res.status(404).send('calendar-url.txt not found');
+    return;
+  }
+
+  if (!calendarUrl) {
+    res.status(400).send('calendar-url.txt is empty');
+    return;
+  }
+
+  try {
+    const { statusCode, body } = await fetchText(calendarUrl, 15000);
+
+    if (statusCode < 200 || statusCode >= 300) {
+      res.status(502).send(`Calendar upstream error: ${statusCode}`);
+      return;
+    }
+
+    res.status(200)
+      .set('Content-Type', 'text/calendar; charset=utf-8')
+      .set('Cache-Control', 'no-store')
+      .send(body);
+  } catch (err) {
+    res.status(502).send(
+      `Calendar upstream error: ${err && err.message ? err.message : String(err)}`
+    );
+  }
+});
 
 app.get('/api/ring_ring', (req, res) => {
   //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi3
@@ -302,7 +402,11 @@ app.get('/api/stop_browser', (req, res) => {
   });
 
 app.get('/api/start_browser', (req, res) => {
-  exec('export DISPLAY=:0;firefox --kiosk=http://192.168.1.48', (error, stdout, stderr) => {if (error) {return;}}); 
+  exec(`export DISPLAY=:0;firefox --kiosk=http://127.0.0.1:${port}/status/`, (error, stdout, stderr) => {
+    if (error) {
+      return;
+    }
+  });
   res.status(200).json( { Status: 'OK'});  
 });
 

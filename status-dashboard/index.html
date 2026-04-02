@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haus Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="protocol-warning hidden" id="protocol-warning">
+      Dieses Dashboard muss per <strong>http://</strong> ausgeliefert werden. Bitte lokal über
+      einen Webserver starten, nicht per <strong>file://</strong>.
+    </div>
+    <main class="dashboard">
+      <section class="panel panel-calendar">
+        <header class="panel-header">
+          <div>
+            <h1>Kalender</h1>
+          </div>
+          <p class="panel-note" id="calendar-status">Lade Kalender ...</p>
+        </header>
+        <div class="calendar-list" id="calendar-list">
+          <div class="empty-state">
+            <p>Kalender wird geladen ...</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="sidebar">
+        <section class="panel panel-clock">
+          <div class="clock-row">
+            <div>
+              <div class="clock-time" id="clock-time">--:--</div>
+              <div class="clock-date" id="clock-date">--</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel panel-weather">
+          <header class="panel-header compact">
+            <div>
+              <p class="eyebrow">Wetter</p>
+              <h2>Wien</h2>
+            </div>
+            <p class="panel-note" id="weather-status">Lade Wetter ...</p>
+          </header>
+          <div class="weather-current">
+            <div class="weather-top">
+              <div class="weather-temp" id="weather-temp">--</div>
+              <div class="weather-summary" id="weather-summary">--</div>
+            </div>
+            <div class="weather-meta-row">
+              <div class="weather-meta-item">
+                <span class="meta-label">Gefühlt</span>
+                <span class="meta-value" id="weather-feels-like">--</span>
+              </div>
+              <div class="weather-meta-item">
+                <span class="meta-label">Wind</span>
+                <span class="meta-value" id="weather-wind">--</span>
+              </div>
+            </div>
+          </div>
+          <div class="weather-block">
+            <p class="block-label">Nächste Tage</p>
+            <div class="weather-days" id="weather-days"></div>
+          </div>
+        </section>
+
+        <section class="panel panel-status">
+          <header class="panel-header compact">
+            <div>
+              <p class="eyebrow">Hausstatus</p>
+              <h2>Energie & Heizung</h2>
+            </div>
+            <p class="panel-note" id="energy-status">Lade Werte ...</p>
+          </header>
+          <div class="status-grid">
+            <article class="metric-card">
+              <p class="metric-label">PV</p>
+              <p class="metric-value" id="energy-pv">--</p>
+            </article>
+            <article class="metric-card">
+              <p class="metric-label">Haus</p>
+              <p class="metric-value" id="energy-load">--</p>
+            </article>
+            <article class="metric-card">
+              <p class="metric-label">Netz</p>
+              <p class="metric-value neutral" id="energy-grid">--</p>
+            </article>
+            <article class="metric-card">
+              <p class="metric-label">Akku</p>
+              <p class="metric-value" id="energy-battery-power">--</p>
+            </article>
+            <article class="metric-card metric-card-inline" id="battery-chip">
+              <span class="chip-label">Batterie</span>
+              <span class="chip-value" id="energy-soc">--</span>
+            </article>
+            <article class="metric-card metric-card-inline" id="heating-chip">
+              <span class="chip-label">Heizung</span>
+              <span class="chip-value" id="heating-state">--</span>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel panel-actions">
+          <button class="action-button" id="front-yard-button" type="button">
+            Vorgarten anzeigen
+          </button>
+          <p class="action-status hidden" id="action-status"></p>
+        </section>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
