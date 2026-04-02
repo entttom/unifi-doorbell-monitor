@@ -240,6 +240,89 @@ function decodeIcsText(value) {
     .trim();
 }
 
+function startOfLocalDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addDays(date, days) {
+  const d = new Date(date.getTime());
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function compareDateOnly(a, b) {
+  const da = startOfLocalDay(a).getTime();
+  const db = startOfLocalDay(b).getTime();
+  if (da === db) return 0;
+  return da < db ? -1 : 1;
+}
+
+/** Letzter Kalendertag des Events (lokal). Bei VALUE=DATE ist DTEND exklusiv. */
+function lastInclusiveDay(event) {
+  if (event.isAllDay) {
+    if (!event.end) {
+      return startOfLocalDay(event.start);
+    }
+    return addDays(startOfLocalDay(event.end), -1);
+  }
+  if (!event.end) {
+    return startOfLocalDay(event.start);
+  }
+  return startOfLocalDay(event.end);
+}
+
+function eachEventDay(event) {
+  const first = startOfLocalDay(event.start);
+  const last = lastInclusiveDay(event);
+  const days = [];
+  for (let d = new Date(first); compareDateOnly(d, last) <= 0; d = addDays(d, 1)) {
+    days.push(startOfLocalDay(d));
+  }
+  return days;
+}
+
+function formatEventTimeOnDay(event, day) {
+  if (event.isAllDay) {
+    return "Ganztag";
+  }
+  if (!event.end) {
+    return formatTime(event.start);
+  }
+
+  const startDay = startOfLocalDay(event.start);
+  const endDay = startOfLocalDay(event.end);
+  const dayTime = startOfLocalDay(day).getTime();
+
+  if (startDay.getTime() === endDay.getTime()) {
+    return `${formatTime(event.start)} - ${formatTime(event.end)}`;
+  }
+
+  const isFirst = dayTime === startDay.getTime();
+  const isLast = dayTime === endDay.getTime();
+
+  if (isFirst && isLast) {
+    return `${formatTime(event.start)} - ${formatTime(event.end)}`;
+  }
+  if (isFirst) {
+    return `${formatTime(event.start)} –`;
+  }
+  if (isLast) {
+    return `– ${formatTime(event.end)}`;
+  }
+  return "—";
+}
+
+function expandEventToVisibleInstances(event, startOfToday) {
+  return eachEventDay(event)
+    .filter((d) => compareDateOnly(d, startOfToday) >= 0)
+    .map((d) => ({
+      event,
+      day: d,
+      timeLabel: formatEventTimeOnDay(event, d),
+      sortTime: event.start.getTime(),
+    }));
+}
+
 function renderCalendar(events) {
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -247,7 +330,7 @@ function renderCalendar(events) {
   const futureEvents = events
     .filter((event) => {
       if (event.isAllDay) {
-        return event.start >= startOfToday;
+        return compareDateOnly(lastInclusiveDay(event), startOfToday) >= 0;
       }
 
       if (event.end) {
@@ -263,10 +346,18 @@ function renderCalendar(events) {
     return;
   }
 
+  const instances = futureEvents
+    .flatMap((event) => expandEventToVisibleInstances(event, startOfToday))
+    .sort((a, b) => {
+      const dayCmp = a.day.getTime() - b.day.getTime();
+      if (dayCmp !== 0) return dayCmp;
+      return a.sortTime - b.sortTime;
+    });
+
   const groups = [];
 
-  for (const event of futureEvents) {
-    const groupKey = formatGroupKey(event.start);
+  for (const inst of instances) {
+    const groupKey = formatGroupKey(inst.day);
     let group = groups.find((entry) => entry.key === groupKey);
 
     if (!group) {
@@ -276,7 +367,7 @@ function renderCalendar(events) {
 
       group = {
         key: groupKey,
-        label: formatGroupLabel(event.start),
+        label: formatGroupLabel(inst.day),
         events: [],
       };
       groups.push(group);
@@ -286,21 +377,17 @@ function renderCalendar(events) {
       break;
     }
 
-    group.events.push(event);
+    group.events.push(inst);
   }
-
-  const shownEvents = groups.flatMap((group) => group.events).length;
-  // Falls es mehr Termine als angezeigt gibt, zeigen wir keine "weitere Termine"-Hinweise an.
-  // (Die Limitierung oben bleibt bestehen, um die Anzahl der gerenderten Events zu begrenzen.)
 
   elements.calendarList.innerHTML = groups
     .map((group) => {
       const eventsMarkup = group.events
-        .map((event) => {
+        .map((inst) => {
           return `
             <div class="calendar-event">
-              <div class="calendar-time">${formatEventTime(event)}</div>
-              <div class="calendar-summary">${escapeHtml(event.summary)}</div>
+              <div class="calendar-time">${escapeHtml(inst.timeLabel)}</div>
+              <div class="calendar-summary">${escapeHtml(inst.event.summary)}</div>
             </div>
           `;
         })
@@ -340,19 +427,6 @@ function formatGroupLabel(date) {
     day: "numeric",
     month: "long",
   }).format(date);
-}
-
-function formatEventTime(event) {
-  if (event.isAllDay) {
-    return "Ganztag";
-  }
-
-  const start = formatTime(event.start);
-  if (!event.end) {
-    return start;
-  }
-
-  return `${start} - ${formatTime(event.end)}`;
 }
 
 function formatTime(date) {
