@@ -20,10 +20,6 @@ const USE_PURE_GSTREAMER = true; // Nutze reines GStreamer ohne Fallback
 
 app.use(bodyParser.json());
 
-// Serve the HTML/CSS/JS dashboard from `status-dashboard/` under `/status/`.
-app.get('/status', (req, res) => {
-  res.redirect(302, '/status/');
-});
 app.use('/status', express.static(path.join(__dirname, 'status-dashboard')));
 
 const CALENDAR_URL_PATH = path.join(
