@@ -323,8 +323,9 @@ h2 {
 .weather-current {
   container-type: inline-size;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: stretch;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  justify-items: stretch;
   gap: 8px 12px;
   text-align: left;
   min-height: clamp(4.5rem, 18vmin, 7rem);
@@ -334,6 +335,7 @@ h2 {
   display: flex;
   align-items: center;
   min-width: 0;
+  justify-self: start;
 }
 
 .weather-temp {
@@ -342,9 +344,9 @@ h2 {
   letter-spacing: -0.03em;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  padding-right: 2px;
-  /* Skaliert mit dem Display; dominiert die Zeilenhöhe neben Gefühlt/Wind */
+  justify-content: center;
+  justify-self: center;
+  /* Skaliert mit dem Display; geometrisch mittig zwischen Text und Meta */
   font-size: clamp(2.75rem, min(20vmin, 28cqw), 6.25rem);
 }
 
@@ -362,6 +364,7 @@ h2 {
   gap: 4px;
   align-items: flex-start;
   flex: 0 0 auto;
+  justify-self: end;
 }
 
 .weather-meta-item {
