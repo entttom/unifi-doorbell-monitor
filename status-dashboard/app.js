@@ -122,7 +122,7 @@ function initCalendarLayoutObserver() {
     cancelAnimationFrame(calendarLayoutFrame);
     calendarLayoutFrame = requestAnimationFrame(() => {
       calendarLayoutFrame = 0;
-      void renderCalendar(lastCalendarRawEvents);
+      void renderCalendar(lastCalendarRawEvents, { animate: false });
     });
   });
   ro.observe(elements.calendarList);
@@ -132,6 +132,26 @@ function nextLayoutFrame() {
   return new Promise((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(resolve));
   });
+}
+
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+async function calendarListFadeOut() {
+  const el = elements.calendarList;
+  el.classList.add("calendar-list--dim");
+  await new Promise((resolve) => {
+    const done = () => resolve();
+    el.addEventListener("transitionend", done, { once: true });
+    setTimeout(done, 320);
+  });
+}
+
+async function calendarListFadeIn() {
+  const el = elements.calendarList;
+  await nextLayoutFrame();
+  el.classList.remove("calendar-list--dim");
 }
 
 function buildCalendarGroupsFromInstances(instancesSlice) {
@@ -254,7 +274,13 @@ async function loadCalendar() {
   } catch (error) {
     console.error(error);
     lastCalendarRawEvents = null;
+    if (!prefersReducedMotion()) {
+      await calendarListFadeOut();
+    }
     renderCalendarMessage("Kalender momentan nicht verfügbar.");
+    if (!prefersReducedMotion()) {
+      await calendarListFadeIn();
+    }
     elements.calendarStatus.textContent = "Fehler";
     elements.calendarStatus.classList.remove("hidden");
   }
@@ -429,9 +455,14 @@ function expandEventToVisibleInstances(event, startOfToday) {
     }));
 }
 
-async function renderCalendar(events) {
+async function renderCalendar(events, options = {}) {
+  const { animate = true } = options;
   calendarRelayoutSuspended += 1;
   try {
+  if (!animate) {
+    elements.calendarList.classList.remove("calendar-list--dim");
+  }
+
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -451,7 +482,13 @@ async function renderCalendar(events) {
 
   if (futureEvents.length === 0) {
     lastCalendarRawEvents = null;
+    if (animate && !prefersReducedMotion()) {
+      await calendarListFadeOut();
+    }
     renderCalendarMessage("Keine kommenden Termine gefunden.");
+    if (animate && !prefersReducedMotion()) {
+      await calendarListFadeIn();
+    }
     return;
   }
 
@@ -475,9 +512,17 @@ async function renderCalendar(events) {
   }
   await nextLayoutFrame();
 
+  if (animate && !prefersReducedMotion()) {
+    await calendarListFadeOut();
+  }
+
   const n = countFittingCalendarInstances(capped);
   const finalGroups = buildCalendarGroupsFromInstances(capped.slice(0, n));
   elements.calendarList.innerHTML = calendarGroupsHtml(finalGroups);
+
+  if (animate && !prefersReducedMotion()) {
+    await calendarListFadeIn();
+  }
   } finally {
     calendarRelayoutSuspended -= 1;
   }

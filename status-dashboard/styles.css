@@ -203,6 +203,12 @@ h2 {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: hidden;
+  opacity: 1;
+  transition: opacity 0.22s ease;
+}
+
+.calendar-list.calendar-list--dim {
+  opacity: 0;
 }
 
 .calendar-day {
@@ -565,6 +571,12 @@ h2 {
 .action-button:disabled {
   cursor: wait;
   opacity: 0.75;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calendar-list {
+    transition: none;
+  }
 }
 
 @media (max-width: 1024px), (max-height: 600px) {
