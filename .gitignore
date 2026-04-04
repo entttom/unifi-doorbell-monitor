@@ -60,3 +60,7 @@ backup/
 /status-dashboard/config/calendar-url.txt
 /status-dashboard/index_files/
 /status-dashboard/.git/
+
+# lokale App-/go2rtc-Konfiguration
+/config/app-config.json
+/config/go2rtc.yaml

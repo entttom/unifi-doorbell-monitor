@@ -1,0 +1,18 @@
+api:
+  listen: "127.0.0.1:1984"
+
+rtsp:
+  listen: "127.0.0.1:8554"
+
+webrtc:
+  listen: ":8555"
+
+preload:
+  doorbell: "video"
+  frontyard: "video"
+
+streams:
+  doorbell:
+    - rtsp://192.168.1.1:7447/3Zs8SwrImTV2rjNs
+  frontyard:
+    - rtsp://192.168.1.1:7447/UWlJ0sQ5GKc9Qygj

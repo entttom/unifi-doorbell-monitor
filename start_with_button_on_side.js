@@ -1,55 +1,301 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const app = express();
-const { exec } = require('node:child_process')
+const { exec } = require('node:child_process');
 const path = require('node:path');
-const fs = require('node:fs/promises');
+const fs = require('node:fs');
+const fsPromises = require('node:fs/promises');
 const http = require('node:http');
 const https = require('node:https');
+const net = require('node:net');
 const { URL } = require('node:url');
-//var Gpio = require('onoff').Gpio;
-//var pir = new Gpio(417,'in','both'); // Find right PIN "cat /sys/kernel/debug/gpio" PIN12 is named 417 for whatever reason 
 
-var monitor_on = true;
-var stream = false;
-var stream_front_door = false;
-let isChangingMonitor = false;
+const app = express();
+const server = http.createServer(app);
 
-// GStreamer-Konfiguration (reines GStreamer ohne VLC)
-const USE_PURE_GSTREAMER = true; // Nutze reines GStreamer ohne Fallback
+const port = Number(process.env.PORT || 3000);
+const GO2RTC_HTTP_PORT = Number(process.env.GO2RTC_HTTP_PORT || 1984);
+const GO2RTC_HOST = process.env.GO2RTC_HOST || '127.0.0.1';
+const MONITOR_TIMEOUT_MS = 300000;
+const STREAM_TIMEOUT_MS = 300000;
+
+const STATUS_DIR = path.join(__dirname, 'status-dashboard');
+const CONFIG_DIR = path.join(__dirname, 'config');
+const CALENDAR_URL_PATH = path.join(CONFIG_DIR, 'calendar-url.txt');
+const APP_CONFIG_PATH = path.join(CONFIG_DIR, 'app-config.json');
+const APP_CONFIG_EXAMPLE_PATH = path.join(CONFIG_DIR, 'app-config.example.json');
+const GO2RTC_CONFIG_EXAMPLE_PATH = path.join(CONFIG_DIR, 'go2rtc.yaml.example');
+
+const DEFAULT_APP_CONFIG = {
+  ui: {
+    dashboardPath: '/status/',
+    streamPath: '/status/stream.html',
+    pollIntervalMs: 1000,
+    go2rtcBasePath: '/go2rtc',
+    streamModes: {
+      main: {
+        streamKey: 'doorbell',
+        title: 'Haustuer',
+        showActions: true,
+      },
+      front_yard: {
+        streamKey: 'frontyard',
+        title: 'Vorgarten',
+        showActions: false,
+      },
+      front_yard_after_ring: {
+        streamKey: 'frontyard',
+        title: 'Vorgarten',
+        showActions: true,
+      },
+    },
+  },
+  actions: [
+    {
+      id: 'open-gate',
+      label: 'Gartentor oeffnen',
+      method: 'GET',
+      url: 'http://192.168.1.2:8087/set/openknx.0.Verbraucher.Garten_Garage.Gartentuere(Schalten)?value=true',
+    },
+    {
+      id: 'open-door',
+      label: 'Eingangstuere oeffnen',
+      method: 'GET',
+      url: 'http://192.168.1.2:8087/set/openknx.0.Verbraucher.Erdgeschoss.1_Vorraum-Tueroeffner(Schalten)?value=true',
+    },
+  ],
+};
 
 app.use(bodyParser.json());
+app.use('/status', express.static(STATUS_DIR));
 
-app.use('/status', express.static(path.join(__dirname, 'status-dashboard')));
+let appConfig = loadAppConfig();
+let monitor_on = true;
+let stream = false;
+let stream_front_door = false;
+let isChangingMonitor = false;
+let timer = null;
+let timer_start_time = null;
+let timer_stream = null;
+let timer_stream_start_time = null;
+let uiState = createDefaultUiState();
 
-const CALENDAR_URL_PATH = path.join(
-  __dirname,
-  'status-dashboard',
-  'config',
-  'calendar-url.txt'
-);
+server.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+  console.log('Stream-Backend: go2rtc');
+});
+
+server.on('upgrade', (req, socket, head) => {
+  if (!req.url || !req.url.startsWith('/go2rtc/')) {
+    socket.destroy();
+    return;
+  }
+
+  const upstream = net.connect(GO2RTC_HTTP_PORT, GO2RTC_HOST, () => {
+    const targetPath = req.url.replace(/^\/go2rtc/, '') || '/';
+    const headerLines = [`${req.method} ${targetPath} HTTP/${req.httpVersion}`];
+
+    for (let index = 0; index < req.rawHeaders.length; index += 2) {
+      const headerName = req.rawHeaders[index];
+      const headerValue = req.rawHeaders[index + 1];
+      if (headerName.toLowerCase() === 'host') {
+        continue;
+      }
+      headerLines.push(`${headerName}: ${headerValue}`);
+    }
+
+    headerLines.push(`Host: ${GO2RTC_HOST}:${GO2RTC_HTTP_PORT}`);
+    headerLines.push('');
+    headerLines.push('');
+
+    upstream.write(headerLines.join('\r\n'));
+    if (head && head.length > 0) {
+      upstream.write(head);
+    }
+
+    upstream.pipe(socket);
+    socket.pipe(upstream);
+  });
+
+  upstream.on('error', () => {
+    socket.destroy();
+  });
+});
+
+function createDefaultUiState() {
+  return {
+    active: false,
+    mode: null,
+    streamKey: null,
+    title: null,
+    showActions: false,
+    source: null,
+    activatedAt: null,
+    endsAt: null,
+  };
+}
+
+function loadAppConfig() {
+  const configCandidates = [APP_CONFIG_PATH, APP_CONFIG_EXAMPLE_PATH];
+  let loadedConfig = null;
+
+  for (const candidate of configCandidates) {
+    if (!fs.existsSync(candidate)) {
+      continue;
+    }
+
+    try {
+      loadedConfig = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+      break;
+    } catch (error) {
+      console.error(`Konnte ${candidate} nicht lesen:`, error.message);
+    }
+  }
+
+  const mergedUi = {
+    ...DEFAULT_APP_CONFIG.ui,
+    ...(loadedConfig && loadedConfig.ui ? loadedConfig.ui : {}),
+    streamModes: {
+      ...DEFAULT_APP_CONFIG.ui.streamModes,
+      ...(loadedConfig && loadedConfig.ui && loadedConfig.ui.streamModes
+        ? loadedConfig.ui.streamModes
+        : {}),
+    },
+  };
+
+  return {
+    ui: mergedUi,
+    actions:
+      loadedConfig && Array.isArray(loadedConfig.actions) && loadedConfig.actions.length > 0
+        ? loadedConfig.actions
+        : DEFAULT_APP_CONFIG.actions,
+  };
+}
+
+function getUiMode(mode) {
+  return appConfig.ui.streamModes[mode] || appConfig.ui.streamModes.main;
+}
+
+function updateLegacyStreamFlags() {
+  stream = uiState.active;
+  stream_front_door = uiState.active && uiState.mode === 'main';
+}
+
+function resetMonitorTimer() {
+  clearTimeout(timer);
+  timer_start_time = Date.now();
+  timer = setTimeout(() => {
+    console.log(`[TIMER] Auto-OFF ausgelöst um ${new Date().toISOString()}`);
+    timer = null;
+    turnMonitorOffCommand(() => {
+      monitor_on = false;
+      clearStreamState();
+      timer_start_time = null;
+    });
+  }, MONITOR_TIMEOUT_MS);
+}
+
+function resetStreamTimer() {
+  clearTimeout(timer_stream);
+  timer_stream_start_time = Date.now();
+  timer_stream = setTimeout(() => {
+    console.log(`[STREAM_TIMER] Auto-Stop ausgelöst um ${new Date().toISOString()}`);
+    timer_stream = null;
+    clearStreamState();
+    timer_stream_start_time = null;
+  }, STREAM_TIMEOUT_MS);
+}
+
+function stopMonitorTimer() {
+  clearTimeout(timer);
+  timer = null;
+  timer_start_time = null;
+}
+
+function stopStreamTimer() {
+  clearTimeout(timer_stream);
+  timer_stream = null;
+  timer_stream_start_time = null;
+}
+
+function clearStreamState() {
+  uiState = createDefaultUiState();
+  updateLegacyStreamFlags();
+}
+
+function activateStreamMode(mode, source) {
+  const modeConfig = getUiMode(mode);
+  const activatedAt = Date.now();
+  uiState = {
+    active: true,
+    mode,
+    streamKey: modeConfig.streamKey,
+    title: modeConfig.title,
+    showActions: Boolean(modeConfig.showActions),
+    source,
+    activatedAt,
+    endsAt: activatedAt + STREAM_TIMEOUT_MS,
+  };
+  updateLegacyStreamFlags();
+  resetStreamTimer();
+}
+
+function getConfiguredActions() {
+  return appConfig.actions.map((action) => ({
+    id: action.id,
+    label: action.label,
+    method: action.method || 'GET',
+  }));
+}
+
+function getPlayerUrl(streamKey) {
+  const basePath = (appConfig.ui.go2rtcBasePath || '/go2rtc').replace(/\/$/, '');
+  return `${basePath}/stream.html?src=${encodeURIComponent(streamKey)}&mode=webrtc`;
+}
+
+function buildUiStatePayload() {
+  return {
+    backend: 'go2rtc',
+    dashboardPath: appConfig.ui.dashboardPath,
+    streamPath: appConfig.ui.streamPath,
+    pollIntervalMs: appConfig.ui.pollIntervalMs,
+    monitor_on,
+    stream,
+    stream_front_door,
+    ui_state: {
+      ...uiState,
+      playerUrl: uiState.streamKey ? getPlayerUrl(uiState.streamKey) : null,
+      actions: uiState.active && uiState.showActions ? getConfiguredActions() : [],
+    },
+  };
+}
+
+function turnMonitorOnCommand(callback) {
+  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', callback);
+}
+
+function turnMonitorOffCommand(callback) {
+  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', callback);
+}
 
 function fetchText(urlString, timeoutMs) {
   return new Promise((resolve, reject) => {
     let parsed;
     try {
       parsed = new URL(urlString);
-    } catch (err) {
-      reject(err);
+    } catch (error) {
+      reject(error);
       return;
     }
 
-    const isHttps = parsed.protocol === 'https:';
-    const transport = isHttps ? https : http;
-
+    const transport = parsed.protocol === 'https:' ? https : http;
     const request = transport.request(
       {
         method: 'GET',
         hostname: parsed.hostname,
-        port: parsed.port || (isHttps ? 443 : 80),
+        port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
         path: `${parsed.pathname}${parsed.search}`,
         headers: {
-          'User-Agent': 'raspi-status-dashboard/1.0',
+          'User-Agent': 'raspi-status-dashboard/2.0',
           Accept: 'text/calendar,text/plain;q=0.9,*/*;q=0.8',
         },
       },
@@ -73,152 +319,172 @@ function fetchText(urlString, timeoutMs) {
   });
 }
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-  console.log('Stream-Backend: Pure GStreamer (ohne VLC-Fallback)');
-});
+function fetchLocalJson(pathname, timeoutMs = 3000) {
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      {
+        method: 'GET',
+        hostname: GO2RTC_HOST,
+        port: GO2RTC_HTTP_PORT,
+        path: pathname,
+        headers: {
+          Accept: 'application/json',
+        },
+      },
+      (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => {
+          body += chunk;
+        });
+        response.on('end', () => {
+          if ((response.statusCode || 0) >= 400) {
+            reject(new Error(`HTTP ${(response.statusCode || 0)}`));
+            return;
+          }
 
-// Hilfsfunktion für Stream-Kommandos (reines GStreamer)
-function getStreamCommand(streamType) {
-  // Nutze das reine GStreamer-Skript mit expliziter DISPLAY-Variable
-  const baseCmd = 'DISPLAY=:0';
-  switch(streamType) {
-    case 'main':
-      return `${baseCmd} python3 stream_gstreamer_pure.py main`;
-    case 'front_yard':
-      return `${baseCmd} python3 stream_gstreamer_pure.py front_yard`;
-    case 'front_yard_after_ring':
-      return `${baseCmd} python3 stream_gstreamer_pure.py front_yard_after_ring`;
-    default:
-      return `${baseCmd} python3 stream_gstreamer_pure.py main`;
-  }
-}
-
-function killStreamProcesses() {
-  // Beende alle GStreamer-Stream-Prozesse
-  const killCommands = [
-    'pkill -f stream_gstreamer_pure.py',
-    'touch /tmp/exit_stream_front_yard',  // Exit-Signal für front_yard
-    'touch /tmp/exit_stream_main',        // Exit-Signal für main
-    'touch /tmp/exit_stream_front_yard_after_ring'  // Exit-Signal für front_yard_after_ring
-  ];
-  
-  killCommands.forEach(cmd => {
-    exec(cmd, (error, stdout, stderr) => {
-      // Ignoriere Fehler - Prozess war möglicherweise nicht aktiv
-    });
-  });
-}
-
-function cleanupExitFiles() {
-  // Lösche alle Exit-Dateien vor Stream-Start
-  exec('rm -f /tmp/exit_stream_*', (error, stdout, stderr) => {
-    // Ignoriere Fehler
-  });
-}
-
-function checkStreamProcessesSync() {
-  // Synchronisiere Stream-Status mit tatsächlich laufenden Prozessen
-  exec('ps aux | grep "stream_gstreamer_pure.py" | grep -v grep', (error, stdout, stderr) => {
-    const streamProcessesRunning = !error && stdout && stdout.trim().length > 0;
-    
-    if (!streamProcessesRunning && (stream || stream_front_door)) {
-      // Prozesse sind beendet aber Status-Variablen noch aktiv
-      console.log('[SYNC] Stream-Prozesse beendet, setze Status-Variablen zurück');
-      stream = false;
-      stream_front_door = false;
-    } else if (streamProcessesRunning && !stream && !stream_front_door) {
-      // Prozesse laufen aber Status-Variablen sind inaktiv (sollte nicht passieren)
-      console.log('[SYNC] Stream-Prozesse gefunden, setze Status-Variablen');
-      stream = true;
-    }
-  });
-}
-
-//Timer for Monitor off and kill streams
-let timer;
-let timer_start_time = null;
-
-// Stream-Synchronisation Timer (alle 10 Sekunden)
-setInterval(checkStreamProcessesSync, 10000);
-console.log('[INIT] Stream-Synchronisation Timer gestartet (alle 10s)');
-const runTimer = () => {
-  timer_start_time = Date.now();
-  timer = setTimeout(() => {
-    console.log(`[TIMER] Auto-OFF ausgelöst um ${new Date().toISOString()}`);
-    exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {
-      if (error) {
-        console.error(`[TIMER] Monitor OFF fehlgeschlagen:`, error.message);
-      } else {
-        console.log(`[TIMER] Monitor OFF erfolgreich`);
+          try {
+            resolve(JSON.parse(body));
+          } catch (error) {
+            reject(error);
+          }
+        });
       }
-      // monitor_on wird IMMER auf false gesetzt, auch bei Fehler
-      monitor_on = false;
+    );
+
+    request.on('error', reject);
+    request.setTimeout(timeoutMs, () => {
+      request.destroy(new Error('Request timeout'));
     });
-    
-    killStreamProcesses(); // Beende alle Stream-Prozesse
-    
-    stream = false;
-    stream_front_door = false;
-    timer_start_time = null; // Reset when timer expires
-    
-  }, "300000"); //Screen auto of after 5 min
-};
+    request.end();
+  });
+}
 
-//Timer for kill streams only
-let timer_stream;
-let timer_stream_start_time = null;
-const runTimer_stream = () => {
-  timer_stream_start_time = Date.now();
-  timer_stream = setTimeout(() => {
-    killStreamProcesses(); // Beende alle Stream-Prozesse
-
-    stream = false;
-    stream_front_door = false;
-    timer_stream_start_time = null; // Reset when timer expires
-    
-  }, "300000"); //Screen auto of after 5 min
-};
-
-setTimeout(() => {
-exec(`firefox --kiosk=http://127.0.0.1:${port}/status/`, (error, stdout, stderr) => {
-  if (error) {
+function ensureMonitorOn(res, onReady) {
+  if (monitor_on) {
+    resetMonitorTimer();
+    onReady();
     return;
   }
-}); // Start Firefox 
-}, "10000"); 
 
-
-setTimeout(() => {
-  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5 after Start
-  monitor_on = false;
-}, "30000"); 
-
-// Add the edge detection callback to catch the motion detection events
-// var armed = false;
-/*
-pir.watch(function(err, value) {
-  if (value === 1) {
-    if (armed == false) {
-    // The pin went high - motion detected
-    console.log("Motion Detected: %d", value);
-    exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi5
-    armed = true;
-    setTimeout(() => { armed = false}, "60000"); 
-      }
-    clearTimeout(timer);
-    runTimer();
+  if (isChangingMonitor) {
+    res.status(200).json({ Status: 'AlreadyPending' });
+    return;
   }
-});
-*/
+
+  isChangingMonitor = true;
+  turnMonitorOnCommand((error) => {
+    isChangingMonitor = false;
+    if (error) {
+      monitor_on = false;
+      res.status(500).json({ Status: 'Error', Message: error.message });
+      return;
+    }
+
+    monitor_on = true;
+    resetMonitorTimer();
+    onReady();
+  });
+}
+
+function proxyGo2RtcHttp(req, res) {
+  const targetPath = req.originalUrl.replace(/^\/go2rtc/, '') || '/';
+  const upstream = http.request(
+    {
+      hostname: GO2RTC_HOST,
+      port: GO2RTC_HTTP_PORT,
+      method: req.method,
+      path: targetPath,
+      headers: {
+        ...req.headers,
+        host: `${GO2RTC_HOST}:${GO2RTC_HTTP_PORT}`,
+      },
+    },
+    (upstreamResponse) => {
+      res.status(upstreamResponse.statusCode || 502);
+      for (const [header, value] of Object.entries(upstreamResponse.headers)) {
+        if (typeof value !== 'undefined') {
+          res.setHeader(header, value);
+        }
+      }
+      upstreamResponse.pipe(res);
+    }
+  );
+
+  upstream.on('error', (error) => {
+    res.status(502).json({
+      Status: 'Error',
+      Message: `go2rtc proxy failed: ${error.message}`,
+    });
+  });
+
+  req.pipe(upstream);
+}
+
+function getMonitorStatus() {
+  return new Promise((resolve) => {
+    exec('WAYLAND_DISPLAY="wayland-1" wlr-randr', (error, stdout) => {
+      if (error || !stdout) {
+        resolve({
+          actualMonitorStatus: 'unknown',
+          rawOutput: error ? error.message : '',
+        });
+        return;
+      }
+
+      const hdmiMatch = stdout.match(/HDMI-A-1[\s\S]*?(?=\n\w|$)/);
+      resolve({
+        actualMonitorStatus:
+          hdmiMatch && hdmiMatch[0].includes('Enabled: yes') ? 'on' : 'off',
+        rawOutput: stdout,
+      });
+    });
+  });
+}
+
+function runCommand(command) {
+  return new Promise((resolve) => {
+    exec(command, (error, stdout, stderr) => {
+      resolve({
+        ok: !error,
+        stdout: stdout || '',
+        stderr: stderr || '',
+        error: error ? error.message : null,
+      });
+    });
+  });
+}
+
+async function getGo2RtcStatus() {
+  try {
+    const streams = await fetchLocalJson('/api/streams');
+    return {
+      healthy: true,
+      streamCount: Array.isArray(streams) ? streams.length : Object.keys(streams || {}).length,
+    };
+  } catch (error) {
+    return {
+      healthy: false,
+      error: error.message,
+    };
+  }
+}
+
+function sendJsonOk(res, extra = {}) {
+  res.status(200).json({
+    Status: 'OK',
+    ...extra,
+  });
+}
+
+app.use('/go2rtc', proxyGo2RtcHttp);
 
 app.get('/api/calendar', async (req, res) => {
   let calendarUrl;
 
   try {
-    calendarUrl = (await fs.readFile(CALENDAR_URL_PATH, 'utf8')).trim();
-  } catch (err) {
+    calendarUrl = (await fsPromises.readFile(CALENDAR_URL_PATH, 'utf8')).trim();
+  } catch (error) {
     res.status(404).send('calendar-url.txt not found');
     return;
   }
@@ -240,1009 +506,454 @@ app.get('/api/calendar', async (req, res) => {
       .set('Content-Type', 'text/calendar; charset=utf-8')
       .set('Cache-Control', 'no-store')
       .send(body);
-  } catch (err) {
+  } catch (error) {
     res.status(502).send(
-      `Calendar upstream error: ${err && err.message ? err.message : String(err)}`
+      `Calendar upstream error: ${error && error.message ? error.message : String(error)}`
     );
   }
 });
 
-app.get('/api/ring_ring', (req, res) => {
-  //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi3
-  console.log(`[RING_RING] Called at ${new Date().toISOString()}, monitor_on=${monitor_on}`);
-  console.log(`[RING_RING] Using Pure GStreamer backend`);
-  
-  if(monitor_on == false) {  
-    console.log(`[RING_RING] Monitor ist OFF, versuche einzuschalten...`);
-    exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error) => {
-      if (error) {
-        console.error(`[RING_RING] Monitor ON fehlgeschlagen:`, error.message);
-        console.error(`[RING_RING] stderr:`, error.stderr || 'Kein stderr');
-        console.error(`[RING_RING] stdout:`, error.stdout || 'Kein stdout');
-        monitor_on = false;
-        return;
-      }
-      console.log(`[RING_RING] Monitor ON Befehl erfolgreich ausgeführt`);
-      monitor_on = true;
-      
-      // Verifikation nach 1 Sekunde
-      setTimeout(() => {
-        exec('WAYLAND_DISPLAY="wayland-1" wlr-randr', (verifyError, verifyStdout) => {
-          if (!verifyError && verifyStdout) {
-            const isActuallyOn = verifyStdout.includes('HDMI-A-1') && verifyStdout.includes('Enabled: yes');
-            console.log(`[RING_RING] Monitor-Verifikation: tatsächlich ${isActuallyOn ? 'ON' : 'OFF'}`);
-            if (!isActuallyOn) {
-              console.error(`[RING_RING] CRITICAL: Monitor-Befehl war erfolgreich, aber Hardware ist immer noch OFF!`);
-            }
-          }
-        });
-      }, 1000);
+app.get('/api/ui_state', (req, res) => {
+  sendJsonOk(res, buildUiStatePayload());
+});
+
+app.all('/api/actions/:id', async (req, res) => {
+  const action = appConfig.actions.find((entry) => entry.id === req.params.id);
+  if (!action) {
+    res.status(404).json({ Status: 'Error', Message: 'Unknown action' });
+    return;
+  }
+
+  try {
+    const parsed = new URL(action.url);
+    const transport = parsed.protocol === 'https:' ? https : http;
+    const response = await new Promise((resolve, reject) => {
+      const actionRequest = transport.request(
+        {
+          method: action.method || 'GET',
+          hostname: parsed.hostname,
+          port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+          path: `${parsed.pathname}${parsed.search}`,
+          headers: {
+            'User-Agent': 'unifi-doorbell-monitor/2.0',
+          },
+        },
+        (actionResponse) => {
+          let body = '';
+          actionResponse.setEncoding('utf8');
+          actionResponse.on('data', (chunk) => {
+            body += chunk;
+          });
+          actionResponse.on('end', () => {
+            resolve({
+              statusCode: actionResponse.statusCode || 0,
+              body,
+            });
+          });
+        }
+      );
+
+      actionRequest.on('error', reject);
+      actionRequest.end();
     });
 
-    setTimeout(() => {
-      if(stream == false) { 
-        console.log(`[RING_RING] Starte GStreamer Stream nach 2s Delay...`);
-        cleanupExitFiles(); // Lösche alte Exit-Dateien
-        const streamCmd = getStreamCommand('main');
-        console.log(`[RING_RING] Führe Befehl aus: ${streamCmd}`);
-        exec(streamCmd, (error, stdout, stderr) => {
-          if (error) {
-            console.error(`[RING_RING] Stream start fehlgeschlagen:`, error.message);
-          } else {
-            console.log(`[RING_RING] Stream erfolgreich gestartet`);
-          }
-        }); 
-        stream = true;
-        stream_front_door = true;
-      };
-    }, "2000"); 
-    }
-    if(monitor_on == true) {
-      console.log(`[RING_RING] Monitor ist bereits ON, starte GStreamer Stream...`);
-      killStreamProcesses(); // Beende alle laufenden Streams
-      cleanupExitFiles(); // Lösche alte Exit-Dateien
-      const streamCmd = getStreamCommand('main');
-      console.log(`[RING_RING] Führe Befehl aus: ${streamCmd}`);
-      exec(streamCmd, (error, stdout, stderr) => {
-        if (error) {
-          console.error(`[RING_RING] Stream start fehlgeschlagen (Monitor bereits ON):`, error.message);
-        }
-      }); 
-      stream = true;
-      stream_front_door = true;
-    };
-  
-    clearTimeout(timer);
-    timer_start_time = null;
-    runTimer();
-    clearTimeout(timer_stream);
-    timer_stream_start_time = null;
-    runTimer_stream();
-    console.log(`[RING_RING] Abgeschlossen, monitor_on=${monitor_on}, stream=${stream}`);
-    res.status(200).json( { Status: 'OK'}); 
+    sendJsonOk(res, {
+      action: {
+        id: action.id,
+        label: action.label,
+      },
+      upstream: response,
+    });
+  } catch (error) {
+    res.status(502).json({
+      Status: 'Error',
+      Message: error.message,
+    });
+  }
+});
+
+app.get('/api/ring_ring', (req, res) => {
+  console.log(`[RING_RING] Called at ${new Date().toISOString()}, monitor_on=${monitor_on}`);
+  ensureMonitorOn(res, () => {
+    activateStreamMode('main', 'ring_ring');
+    sendJsonOk(res, {
+      backend: 'go2rtc',
+      ui_state: buildUiStatePayload().ui_state,
+    });
+  });
 });
 
 app.get('/api/front_yard', (req, res) => {
-  //exec('export DISPLAY=:0;xset q;xset dpms force on', (error, stdout, stderr) => {if (error) {return;}}); // Turn on Screen Pi3
-  console.log(`[FRONT_YARD] Using Pure GStreamer backend`);
-  
-  if(monitor_on == false) {  
-exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error) => {
-  if (error) {
-    console.error("Monitor ON failed:", error.message);
-    monitor_on = false;
-    return;
-  }
-  monitor_on = true;
-});
-  setTimeout(() => {
-  if(stream == false) { 
-      cleanupExitFiles(); // Lösche alte Exit-Dateien
-      const streamCmd = getStreamCommand('front_yard');
-      console.log(`[FRONT_YARD] Führe Befehl aus: ${streamCmd}`);
-      exec(streamCmd, (error, stdout, stderr) => {if (error) {return;}}); 
-      stream = true;
-    };
-  }, "2000"); 
-  }
-
-  if(monitor_on == true && stream == false) {
-    cleanupExitFiles(); // Lösche alte Exit-Dateien
-    const streamCmd = getStreamCommand('front_yard');
-    console.log(`[FRONT_YARD] Führe Befehl aus: ${streamCmd}`);
-    exec(streamCmd, (error, stdout, stderr) => {if (error) {return;}}); 
-    stream = true;
-  };
-
-  if(monitor_on == true && stream_front_door == true) {
-    killStreamProcesses(); // Beende alle Stream-Prozesse
-    setTimeout(() => {
-      cleanupExitFiles(); // Lösche alte Exit-Dateien
-      const streamCmd = getStreamCommand('front_yard_after_ring');
-      console.log(`[FRONT_YARD] Führe Befehl aus (nach Ring): ${streamCmd}`);
-      exec(streamCmd, (error, stdout, stderr) => {if (error) {return;}}); 
-    }, "100"); 
-    stream = true;
-    stream_front_door = false;
-  };
-
-  clearTimeout(timer);
-  timer_start_time = null;
-  runTimer();
-  clearTimeout(timer_stream);
-  timer_stream_start_time = null;
-  runTimer_stream();
-  res.status(200).json( { Status: 'OK'});  
+  console.log(`[FRONT_YARD] Called at ${new Date().toISOString()}, monitor_on=${monitor_on}`);
+  ensureMonitorOn(res, () => {
+    const nextMode = stream_front_door ? 'front_yard_after_ring' : 'front_yard';
+    activateStreamMode(nextMode, 'front_yard');
+    sendJsonOk(res, {
+      backend: 'go2rtc',
+      ui_state: buildUiStatePayload().ui_state,
+    });
+  });
 });
 
 app.get('/api/stop_streaming_and_turn_off_monitor', (req, res) => {
-  // Timer stoppen
-  clearTimeout(timer);
-  timer_start_time = null;
-  clearTimeout(timer_stream);
-  timer_stream_start_time = null;
+  stopMonitorTimer();
+  stopStreamTimer();
+  clearStreamState();
 
-  killStreamProcesses(); // Beende alle Stream-Prozesse
+  turnMonitorOffCommand((error) => {
+    monitor_on = false;
+    if (error) {
+      res.status(500).json({ Status: 'Error', Message: error.message });
+      return;
+    }
 
-  //exec('export DISPLAY=:0;xset q;xset dpms force off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi3
-  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error, stdout, stderr) => {if (error) {return;}}); // Turn off Screen Pi5 
-  monitor_on = false;
-  stream = false;
-  stream_front_door = false;
-  res.status(200).json( { Status: 'OK'});  
+    sendJsonOk(res, { backend: 'go2rtc' });
+  });
 });
 
 app.get('/api/stop_browser', (req, res) => {
-  exec('pkill -f firefox', (error, stdout, stderr) => {if (error) {return;}}); 
-  res.status(200).json( { Status: 'OK'});  
+  exec('pkill -f firefox', () => {
+    sendJsonOk(res);
   });
+});
 
 app.get('/api/start_browser', (req, res) => {
-  exec(`export DISPLAY=:0;firefox --kiosk=http://127.0.0.1:${port}/status/`, (error, stdout, stderr) => {
-    if (error) {
-      return;
-    }
+  exec(`export DISPLAY=:0;firefox --kiosk=http://127.0.0.1:${port}/status/`, () => {
+    sendJsonOk(res);
   });
-  res.status(200).json( { Status: 'OK'});  
 });
 
 app.get('/api/kill_stream_window', (req, res) => {
-  killStreamProcesses(); // Beende alle Stream-Prozesse
-
-  stream = false;
-  stream_front_door = false;
-  res.status(200).json( { Status: 'OK'});  
+  stopStreamTimer();
+  clearStreamState();
+  sendJsonOk(res, { backend: 'go2rtc' });
 });
 
 app.get('/api/open_stream_window', (req, res) => {
-  checkStreamProcessesSync(); // Synchronisiere Status vor dem Start
-  
-  // Prüfe ob bereits ein Stream läuft
-  if (stream || stream_front_door) {
-    console.log('[OPEN_STREAM] Stream bereits aktiv, ignoriere Anfrage');
-    return res.status(200).json({ Status: 'Already Running' });
+  if (stream) {
+    res.status(200).json({ Status: 'Already Running' });
+    return;
   }
-  
-  cleanupExitFiles(); // Lösche alte Exit-Dateien
-  stream = true;
-  stream_front_door = true;
-  const streamCmd = getStreamCommand('main');
-  console.log(`[OPEN_STREAM] Führe Befehl aus: ${streamCmd}`);
-  exec(streamCmd, (error, stdout, stderr) => {if (error) {return;}}); 
-  res.status(200).json( { Status: 'OK'});  
+
+  ensureMonitorOn(res, () => {
+    activateStreamMode('main', 'open_stream_window');
+    sendJsonOk(res, { backend: 'go2rtc' });
+  });
 });
 
 app.get('/api/open_stream_window_front_yard', (req, res) => {
-  checkStreamProcessesSync(); // Synchronisiere Status vor dem Start
-  
-  // Prüfe ob bereits ein Stream läuft
   if (stream) {
-    console.log('[OPEN_STREAM_FRONT_YARD] Stream bereits aktiv, ignoriere Anfrage');
-    return res.status(200).json({ Status: 'Already Running' });
+    res.status(200).json({ Status: 'Already Running' });
+    return;
   }
-  
-  cleanupExitFiles(); // Lösche alte Exit-Dateien
-  stream = true;
-  const streamCmd = getStreamCommand('front_yard');
-  console.log(`[OPEN_STREAM_FRONT_YARD] Führe Befehl aus: ${streamCmd}`);
-  exec(streamCmd, (error, stdout, stderr) => {if (error) {return;}}); 
-  res.status(200).json( { Status: 'OK'});
+
+  ensureMonitorOn(res, () => {
+    activateStreamMode('front_yard', 'open_stream_window_front_yard');
+    sendJsonOk(res, { backend: 'go2rtc' });
+  });
 });
 
-// Neuer Endpoint zum Wechseln des Stream-Backends
 app.get('/api/switch_backend/:backend', (req, res) => {
-  const backend = req.params.backend.toLowerCase();
-  
-  if (backend === 'gstreamer' || backend === 'vlc') {
-    console.log(`[SWITCH_BACKEND] Wechsle zu ${backend.toUpperCase()}`);
-    
-    // Stoppe alle laufenden Streams
-    killStreamProcesses();
-    stream = false;
-    stream_front_door = false;
-    
-    // Backend global ändern würde einen Neustart erfordern
-    // Stattdessen Empfehlung für Konfigurationsänderung
-    res.status(200).json({ 
-      Status: 'Info', 
-      Message: `Das System nutzt bereits reines GStreamer ohne Fallback.`,
-      CurrentBackend: 'Pure GStreamer',
-      RequestedBackend: backend.toUpperCase()
-    });
-  } else {
-    res.status(400).json({ 
-      Status: 'Error', 
-      Message: 'Ungültiges Backend. Nutze "gstreamer" oder "vlc".' 
-    });
-  }
+  res.status(200).json({
+    Status: 'Info',
+    Message: 'Dieses System verwendet jetzt go2rtc als einziges Stream-Backend.',
+    CurrentBackend: 'go2rtc',
+    RequestedBackend: req.params.backend,
+  });
 });
 
 app.get('/api/monitor_on', (req, res) => {
-  console.log(`[MONITOR_ON] Called at ${new Date().toISOString()}, monitor_on=${monitor_on}, isChangingMonitor=${isChangingMonitor}`);
-  
-  if (isChangingMonitor) {
-    console.log(`[MONITOR_ON] Monitor-Änderung bereits in Bearbeitung`);
-    return res.status(200).json({ Status: 'AlreadyPending' });
+  console.log(`[MONITOR_ON] Called at ${new Date().toISOString()}, monitor_on=${monitor_on}`);
+  ensureMonitorOn(res, () => {
+    sendJsonOk(res, {
+      backend: 'go2rtc',
+      ui_state: buildUiStatePayload().ui_state,
+    });
+  });
+});
+
+app.get('/api/monitor_off', (req, res) => {
+  stopMonitorTimer();
+  stopStreamTimer();
+  clearStreamState();
+
+  turnMonitorOffCommand((error) => {
+    monitor_on = false;
+    if (error) {
+      res.status(500).json({
+        Status: 'MonitorOffFailed',
+        Message: error.message,
+        software_monitor_on: monitor_on,
+      });
+      return;
+    }
+
+    sendJsonOk(res, { backend: 'go2rtc' });
+  });
+});
+
+app.get('/api/focus_browser', (req, res) => {
+  exec('wmctrl -a firefox', () => {
+    sendJsonOk(res);
+  });
+});
+
+app.get('/api/debug', async (req, res) => {
+  const [monitorStatus, go2rtcStatus, firefoxStatus] = await Promise.all([
+    getMonitorStatus(),
+    getGo2RtcStatus(),
+    runCommand('pgrep firefox'),
+  ]);
+
+  const currentTime = Date.now();
+  const timerRuntime = timer_start_time ? currentTime - timer_start_time : null;
+  const streamRuntime = timer_stream_start_time ? currentTime - timer_stream_start_time : null;
+
+  res.status(200).json({
+    timestamp: new Date().toISOString(),
+    status: 'OK',
+    configuration: {
+      backend: 'go2rtc',
+      appConfigPath: fs.existsSync(APP_CONFIG_PATH) ? APP_CONFIG_PATH : APP_CONFIG_EXAMPLE_PATH,
+      go2rtcConfigExamplePath: GO2RTC_CONFIG_EXAMPLE_PATH,
+    },
+    variables: {
+      monitor_on,
+      stream,
+      stream_front_door,
+      isChangingMonitor,
+    },
+    ui_state: buildUiStatePayload().ui_state,
+    timer_status: {
+      monitor_timer: {
+        is_running: timer !== null && timer_start_time !== null,
+        started_at: timer_start_time ? new Date(timer_start_time).toISOString() : null,
+        runtime_ms: timerRuntime,
+        time_until_trigger_ms: timerRuntime ? Math.max(0, MONITOR_TIMEOUT_MS - timerRuntime) : null,
+      },
+      stream_timer: {
+        is_running: timer_stream !== null && timer_stream_start_time !== null,
+        started_at: timer_stream_start_time
+          ? new Date(timer_stream_start_time).toISOString()
+          : null,
+        runtime_ms: streamRuntime,
+        time_until_trigger_ms: streamRuntime ? Math.max(0, STREAM_TIMEOUT_MS - streamRuntime) : null,
+      },
+    },
+    system_status: {
+      actual_monitor_status: monitorStatus.actualMonitorStatus,
+      firefox_running: firefoxStatus.ok,
+      firefox_pids: firefoxStatus.ok ? firefoxStatus.stdout.trim().split('\n').filter(Boolean) : [],
+      go2rtc: go2rtcStatus,
+    },
+    monitor_details: {
+      command_used: 'WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1',
+      wlr_randr_output: monitorStatus.rawOutput,
+    },
+  });
+});
+
+app.get('/api/debug/sync_monitor', async (req, res) => {
+  const monitorStatus = await getMonitorStatus();
+  const previousMonitorFlag = monitor_on;
+
+  if (monitorStatus.actualMonitorStatus === 'on') {
+    monitor_on = true;
+  } else if (monitorStatus.actualMonitorStatus === 'off') {
+    monitor_on = false;
   }
 
   if (monitor_on) {
-    console.log(`[MONITOR_ON] Monitor ist bereits ON laut Software-Status`);
-    
-    // WICHTIG: Timer zurücksetzen da Monitor-Aktivität erkannt
-    clearTimeout(timer);
-    timer_start_time = null;
-    runTimer();
-    console.log(`[MONITOR_ON] Monitor Auto-OFF Timer zurückgesetzt (Monitor bereits an)`);
-    
-    // Trotzdem kurz verifizieren ob Hardware auch wirklich an ist
-    exec('WAYLAND_DISPLAY="wayland-1" wlr-randr', (verifyError, verifyStdout) => {
-      if (!verifyError && verifyStdout) {
-        const isActuallyOn = verifyStdout.includes('HDMI-A-1') && verifyStdout.includes('Enabled: yes');
-        console.log(`[MONITOR_ON] Hardware-Verifikation: tatsächlich ${isActuallyOn ? 'ON' : 'OFF'}`);
-        if (!isActuallyOn) {
-          console.log(`[MONITOR_ON] Hardware ist OFF trotz Software-Status ON - führe Einschaltung durch`);
-          performMonitorOn(res);
-        } else {
-          return res.status(200).json({ Status: 'AlreadyOn', TimerReset: true });
-        }
-      } else {
-        return res.status(200).json({ Status: 'AlreadyOn', TimerReset: true });
-      }
+    resetMonitorTimer();
+  } else {
+    stopMonitorTimer();
+  }
+
+  res.status(200).json({
+    status: 'OK',
+    before: previousMonitorFlag,
+    after: monitor_on,
+    actual_monitor_status: monitorStatus.actualMonitorStatus,
+  });
+});
+
+app.get('/api/debug/hard_monitor_reset', async (req, res) => {
+  const debugLog = [];
+  debugLog.push(`[${new Date().toISOString()}] Starte Hard Monitor Reset`);
+
+  const offResult = await runCommand(
+    'WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off'
+  );
+  debugLog.push(
+    `[${new Date().toISOString()}] Monitor OFF: ${offResult.ok ? 'OK' : offResult.error}`
+  );
+
+  await new Promise((resolve) => {
+    setTimeout(resolve, 1500);
+  });
+
+  const onResult = await runCommand(
+    'WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on'
+  );
+  debugLog.push(
+    `[${new Date().toISOString()}] Monitor ON: ${onResult.ok ? 'OK' : onResult.error}`
+  );
+
+  const monitorStatus = await getMonitorStatus();
+  monitor_on = monitorStatus.actualMonitorStatus === 'on';
+  if (monitor_on) {
+    resetMonitorTimer();
+  }
+
+  res.status(200).json({
+    status: monitor_on ? 'SUCCESS' : 'FAILED',
+    backend: 'go2rtc',
+    hardware_status: monitorStatus.actualMonitorStatus,
+    debug_log: debugLog,
+  });
+});
+
+app.get('/api/debug/wayland_env', async (req, res) => {
+  const wayland0 = await runCommand('WAYLAND_DISPLAY="wayland-0" wlr-randr --help');
+  const wayland1 = await runCommand('WAYLAND_DISPLAY="wayland-1" wlr-randr --help');
+  const sway = await runCommand('ps aux | grep sway | grep -v grep');
+
+  res.status(200).json({
+    timestamp: new Date().toISOString(),
+    status: 'OK',
+    backend: 'go2rtc',
+    wayland_tests: {
+      'wayland-0': wayland0.ok,
+      'wayland-1': wayland1.ok,
+      'wayland-0_error': wayland0.error,
+      'wayland-1_error': wayland1.error,
+    },
+    system_info: {
+      sway_running: sway.ok,
+      sway_processes: sway.stdout || 'none',
+    },
+  });
+});
+
+app.get('/api/debug/fix_wayland', async (req, res) => {
+  const debugLog = [];
+  const wayland0 = await runCommand('WAYLAND_DISPLAY="wayland-0" wlr-randr');
+  debugLog.push(`Test wayland-0: ${wayland0.ok ? 'OK' : wayland0.error}`);
+
+  if (wayland0.ok && wayland0.stdout.includes('HDMI-A-1')) {
+    res.status(200).json({
+      status: 'SUCCESS',
+      backend: 'go2rtc',
+      working_display: 'wayland-0',
+      recommended_change: 'Aendere die Monitor-Kommandos dauerhaft auf wayland-0.',
+      debug_log: debugLog,
     });
     return;
   }
 
-  performMonitorOn(res);
+  const wayland1 = await runCommand('WAYLAND_DISPLAY="wayland-1" wlr-randr');
+  debugLog.push(`Test wayland-1: ${wayland1.ok ? 'OK' : wayland1.error}`);
 
-  function performMonitorOn(response) {
-    isChangingMonitor = true;
-    console.log(`[MONITOR_ON] Monitor ist OFF, versuche einzuschalten...`);
-    
-    exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (error) => {
-      if (error) {
-        console.error(`[MONITOR_ON] Monitor ON fehlgeschlagen:`, error.message);
-        console.error(`[MONITOR_ON] stderr:`, error.stderr || 'Kein stderr');
-        console.error(`[MONITOR_ON] stdout:`, error.stdout || 'Kein stdout');
-        isChangingMonitor = false;
-        monitor_on = false;
-        return response.status(500).json({ Status: 'Error', Message: error.message });
-      }
-      
-      console.log(`[MONITOR_ON] Monitor ON Befehl erfolgreich ausgeführt`);
-      monitor_on = true;
-      
-      // Verifikation nach 1 Sekunde
-      setTimeout(() => {
-        exec('WAYLAND_DISPLAY="wayland-1" wlr-randr', (verifyError, verifyStdout) => {
-          if (!verifyError && verifyStdout) {
-            const isActuallyOn = verifyStdout.includes('HDMI-A-1') && verifyStdout.includes('Enabled: yes');
-            console.log(`[MONITOR_ON] Monitor-Verifikation: tatsächlich ${isActuallyOn ? 'ON' : 'OFF'}`);
-            
-            if (!isActuallyOn) {
-              console.error(`[MONITOR_ON] CRITICAL: Monitor-Befehl war erfolgreich, aber Hardware ist immer noch OFF!`);
-              console.log(`[MONITOR_ON] Starte Retry-Versuch...`);
-              
-              // Retry-Versuch
-              setTimeout(() => {
-                exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (retryError) => {
-                  if (retryError) {
-                    console.error(`[MONITOR_ON] Retry fehlgeschlagen:`, retryError.message);
-                    isChangingMonitor = false;
-                    monitor_on = false;
-                    return response.status(500).json({ Status: 'RetryFailed', Message: retryError.message });
-                  }
-                  
-                  console.log(`[MONITOR_ON] Retry-Befehl ausgeführt`);
-                  
-                  // Finale Verifikation nach Retry
-                  setTimeout(() => {
-                    exec('WAYLAND_DISPLAY="wayland-1" wlr-randr', (finalVerifyError, finalVerifyStdout) => {
-                      isChangingMonitor = false;
-                      
-                      if (!finalVerifyError && finalVerifyStdout) {
-                        const isFinallyOn = finalVerifyStdout.includes('HDMI-A-1') && finalVerifyStdout.includes('Enabled: yes');
-                        console.log(`[MONITOR_ON] Finale Verifikation: tatsächlich ${isFinallyOn ? 'ON' : 'OFF'}`);
-                        
-                        if (isFinallyOn) {
-                          monitor_on = true;
-                          console.log(`[MONITOR_ON] Erfolgreich nach Retry!`);
-                          
-                          // Monitor Auto-OFF Timer starten da Monitor jetzt an ist (nach Retry)
-                          clearTimeout(timer);
-                          timer_start_time = null;
-                          runTimer();
-                          console.log(`[MONITOR_ON] Monitor Auto-OFF Timer gestartet (nach Retry)`);
-                          
-                          return response.status(200).json({ Status: 'OK', Message: 'Success after retry' });
-                        } else {
-                          monitor_on = false;
-                          console.error(`[MONITOR_ON] FAILED: Auch nach Retry ist Hardware OFF!`);
-                          return response.status(500).json({ Status: 'HardwareFailed', Message: 'Monitor bleibt OFF auch nach Retry' });
-                        }
-                      } else {
-                        console.error(`[MONITOR_ON] Finale Verifikation fehlgeschlagen`);
-                        return response.status(500).json({ Status: 'VerificationFailed' });
-                      }
-                    });
-                  }, 1000);
-                });
-              }, 1000);
-            } else {
-              // Alles OK beim ersten Versuch
-              isChangingMonitor = false;
-              console.log(`[MONITOR_ON] Erfolgreich beim ersten Versuch!`);
-              
-              // Monitor Auto-OFF Timer starten da Monitor jetzt an ist
-              clearTimeout(timer);
-              timer_start_time = null;
-              runTimer();
-              console.log(`[MONITOR_ON] Monitor Auto-OFF Timer gestartet`);
-              
-              return response.status(200).json({ Status: 'OK' });
-            }
-          } else {
-            isChangingMonitor = false;
-            console.error(`[MONITOR_ON] Verifikation fehlgeschlagen`);
-            return response.status(500).json({ Status: 'VerificationError' });
-          }
-        });
-      }, 1000);
+  if (wayland1.ok && wayland1.stdout.includes('HDMI-A-1')) {
+    res.status(200).json({
+      status: 'NO_CHANGE_NEEDED',
+      backend: 'go2rtc',
+      working_display: 'wayland-1',
+      recommended_change: 'Aktueller wayland-1 funktioniert.',
+      debug_log: debugLog,
     });
+    return;
   }
-});
 
-app.get('/api/monitor_off', (req, res) => {
-  console.log(`[MONITOR_OFF] Called at ${new Date().toISOString()}, monitor_on=${monitor_on}`);
-  
-  // Timer stoppen
-  clearTimeout(timer);
-  timer_start_time = null;
-  clearTimeout(timer_stream);
-  timer_stream_start_time = null;
-
-  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (error) => {
-    if (error) {
-      console.error(`[MONITOR_OFF] Monitor OFF fehlgeschlagen:`, error.message);
-      // Trotzdem monitor_on auf false setzen - Software folgt Hardware-Intention
-      monitor_on = false;
-      console.log(`[MONITOR_OFF] monitor_on auf false gesetzt trotz Fehler`);
-      return res.status(500).json({ 
-        Status: 'MonitorOffFailed', 
-        Message: error.message,
-        software_monitor_on: monitor_on 
-      });
-    }
-    
-    console.log(`[MONITOR_OFF] Monitor OFF erfolgreich`);
-    monitor_on = false;
-
-    // Jetzt auch die Streams beenden
-    killStreamProcesses();
-    stream = false;
-    stream_front_door = false;
-
-    console.log(`[MONITOR_OFF] Abgeschlossen, monitor_on=${monitor_on}`);
-    return res.status(200).json({ Status: 'OK' });
+  res.status(500).json({
+    status: 'NO_WORKING_DISPLAY',
+    backend: 'go2rtc',
+    working_display: null,
+    recommended_change: 'Kein funktionsfaehiges Wayland-Display gefunden.',
+    debug_log: debugLog,
   });
 });
 
-
-app.get('/api/focus_browser', (req, res) => {
-    exec('wmctrl -a firefox', (error, stdout, stderr) => {if (error) {return;}}); 
-    res.status(200).json( { Status: 'OK'});  
-});  
-
-app.get('/api/debug', (req, res) => {
-  // Prüfe den tatsächlichen Monitor-Status
-  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr', (error, stdout, stderr) => {
-    let actualMonitorStatus = 'unknown';
-    let monitorInfo = '';
-    
-    if (!error && stdout) {
-      monitorInfo = stdout;
-      // Suche nach dem HDMI-A-1 Output und seinem Status
-      const hdmiMatch = stdout.match(/HDMI-A-1[\s\S]*?(?=\n\w|$)/);
-      if (hdmiMatch) {
-        actualMonitorStatus = hdmiMatch[0].includes('Enabled: yes') ? 'on' : 'off';
-      }
-    }
-
-    // Prüfe laufende Stream-Prozesse (Pure GStreamer)
-    const processPattern = 'ps aux | grep -E "(stream.*\\.py|firefox)" | grep -v grep';
-      
-    exec(processPattern, (psError, psStdout, psStderr) => {
-      let runningProcesses = [];
-      if (!psError && psStdout) {
-        runningProcesses = psStdout.split('\n').filter(line => line.trim()).map(line => {
-          const parts = line.split(/\s+/);
-          return {
-            pid: parts[1],
-            command: parts.slice(10).join(' ').substring(0, 100) // Begrenzt auf 100 Zeichen
-          };
-        });
-      }
-
-      // Prüfe ob Firefox läuft
-      exec('pgrep firefox', (firefoxError, firefoxStdout) => {
-        const firefoxRunning = !firefoxError && firefoxStdout.trim();
-        
-        // Timer-Laufzeit berechnen
-        const currentTime = Date.now();
-        const timerRuntime = timer_start_time ? currentTime - timer_start_time : null;
-        const timerStreamRuntime = timer_stream_start_time ? currentTime - timer_stream_start_time : null;
-
-        // Sammle erweiterte Debug-Informationen
-        const debugInfo = {
-          timestamp: new Date().toISOString(),
-          status: 'OK',
-          configuration: {
-            backend: 'Pure GStreamer',
-            backend_available: {
-              gstreamer: 'active'
-            }
-          },
-          variables: {
-            monitor_on: monitor_on,
-            stream: stream,
-            stream_front_door: stream_front_door,
-            isChangingMonitor: isChangingMonitor
-          },
-          timer_status: {
-            monitor_timer: {
-              is_running: timer !== null && timer_start_time !== null,
-              started_at: timer_start_time ? new Date(timer_start_time).toISOString() : null,
-              runtime_ms: timerRuntime,
-              runtime_seconds: timerRuntime ? Math.round(timerRuntime / 1000) : null,
-              time_until_trigger_ms: timerRuntime ? (300000 - timerRuntime) : null,
-              time_until_trigger_seconds: timerRuntime ? Math.round((300000 - timerRuntime) / 1000) : null,
-              timeout_duration_ms: 300000
-            },
-            stream_timer: {
-              is_running: timer_stream !== null && timer_stream_start_time !== null,
-              started_at: timer_stream_start_time ? new Date(timer_stream_start_time).toISOString() : null,
-              runtime_ms: timerStreamRuntime,
-              runtime_seconds: timerStreamRuntime ? Math.round(timerStreamRuntime / 1000) : null,
-              time_until_trigger_ms: timerStreamRuntime ? (300000 - timerStreamRuntime) : null,
-              time_until_trigger_seconds: timerStreamRuntime ? Math.round((300000 - timerStreamRuntime) / 1000) : null,
-              timeout_duration_ms: 300000
-            }
-          },
-          system_status: {
-            actual_monitor_status: actualMonitorStatus,
-            firefox_running: !!firefoxRunning,
-            firefox_pids: firefoxRunning ? firefoxStdout.trim().split('\n') : []
-          },
-          running_processes: runningProcesses,
-          monitor_details: {
-            command_used: 'WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1',
-            last_monitor_command_error: error ? error.message : null,
-            wlr_randr_output: monitorInfo || 'No output'
-          },
-          potential_issues: []
-        };
-
-        // Erkenne potentielle Probleme
-        if (monitor_on === true && actualMonitorStatus === 'off') {
-          debugInfo.potential_issues.push('CRITICAL: monitor_on=true aber tatsächlicher Monitor-Status ist OFF');
-        }
-        
-        if (monitor_on === false && actualMonitorStatus === 'on') {
-          debugInfo.potential_issues.push('WARNING: monitor_on=false aber tatsächlicher Monitor-Status ist ON');
-        }
-
-        if (stream === true && runningProcesses.filter(p => p.command.includes('stream')).length === 0) {
-          debugInfo.potential_issues.push('WARNING: stream=true aber keine Stream-Prozesse laufen');
-        }
-
-        if (isChangingMonitor === true) {
-          debugInfo.potential_issues.push('INFO: Monitor-Status wird gerade geändert');
-        }
-
-        // Timer-bezogene Probleme erkennen
-        if (debugInfo.timer_status.monitor_timer.is_running && debugInfo.timer_status.monitor_timer.time_until_trigger_seconds < 30) {
-          debugInfo.potential_issues.push(`WARNING: Monitor wird in ${debugInfo.timer_status.monitor_timer.time_until_trigger_seconds} Sekunden automatisch ausgeschaltet`);
-        }
-
-        if (debugInfo.timer_status.stream_timer.is_running && debugInfo.timer_status.stream_timer.time_until_trigger_seconds < 30) {
-          debugInfo.potential_issues.push(`WARNING: Streams werden in ${debugInfo.timer_status.stream_timer.time_until_trigger_seconds} Sekunden automatisch beendet`);
-        }
-
-        if (!debugInfo.timer_status.monitor_timer.is_running && monitor_on === true) {
-          debugInfo.potential_issues.push('WARNING: Monitor ist AN aber kein Auto-OFF Timer läuft - verwende /api/debug/auto_fix_timer');
-        }
-
-        if (!debugInfo.timer_status.stream_timer.is_running && (stream === true || stream_front_door === true)) {
-          debugInfo.potential_issues.push('WARNING: Streams laufen aber kein Auto-Stop Timer ist aktiv - verwende /api/debug/auto_fix_timer');
-        }
-
-        // Zusätzliche kritische Konsistenz-Prüfungen
-        if (monitor_on === true && actualMonitorStatus === 'off') {
-          debugInfo.potential_issues.push('CRITICAL: Inkonsistenz erkannt! Software denkt Monitor ist AN, aber Hardware ist AUS. Möglicherweise fehlgeschlagener Monitor-Befehl.');
-        }
-
-        if (monitor_on === false && actualMonitorStatus === 'on') {
-          debugInfo.potential_issues.push('WARNING: Software denkt Monitor ist AUS, aber Hardware ist AN. Möglicherweise externer Eingriff.');
-        }
-
-        res.status(200).json(debugInfo);
-      });
-    });
-  });
-});  
-
-// Alle anderen Endpunkte bleiben unverändert...
-// (Die restlichen Debug-Endpunkte sind identisch)
-
-// Neuer Debug-Endpoint um Monitor-Status zu synchronisieren
-app.get('/api/debug/sync_monitor', (req, res) => {
-  const startTime = Date.now();
-  const debugLog = [];
-  
-  debugLog.push(`[${new Date().toISOString()}] Starte Monitor-Synchronisation`);
-  debugLog.push(`[${new Date().toISOString()}] Aktueller monitor_on Status: ${monitor_on}`);
-  
-  // Prüfe aktuellen Hardware-Status
-  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr', (error, stdout, stderr) => {
-    debugLog.push(`[${new Date().toISOString()}] wlr-randr Befehl ausgeführt`);
-    
-    if (error) {
-      debugLog.push(`[${new Date().toISOString()}] ERROR: wlr-randr fehlgeschlagen: ${error.message}`);
-      return res.status(500).json({
-        status: 'ERROR',
-        message: 'Konnte Monitor-Status nicht prüfen',
-        debug_log: debugLog,
-        duration_ms: Date.now() - startTime
-      });
-    }
-    
-    let actualMonitorStatus = 'unknown';
-    const hdmiMatch = stdout.match(/HDMI-A-1[\s\S]*?(?=\n\w|$)/);
-    
-    if (hdmiMatch) {
-      actualMonitorStatus = hdmiMatch[0].includes('Enabled: yes') ? 'on' : 'off';
-      debugLog.push(`[${new Date().toISOString()}] Tatsächlicher Monitor-Status erkannt: ${actualMonitorStatus}`);
-    } else {
-      debugLog.push(`[${new Date().toISOString()}] WARNING: HDMI-A-1 nicht in wlr-randr Output gefunden`);
-    }
-    
-    // Prüfe ob Synchronisation nötig ist
-    const needsSync = (monitor_on && actualMonitorStatus === 'off') || (!monitor_on && actualMonitorStatus === 'on');
-    
-    if (needsSync) {
-      debugLog.push(`[${new Date().toISOString()}] SYNC NEEDED: Software-Status (${monitor_on}) != Hardware-Status (${actualMonitorStatus})`);
-      
-      // Synchronisiere Software-Status mit Hardware-Status
-      if (actualMonitorStatus === 'on') {
-        monitor_on = true;
-        debugLog.push(`[${new Date().toISOString()}] monitor_on auf true gesetzt (Hardware ist an)`);
-      } else {
-        monitor_on = false;
-        debugLog.push(`[${new Date().toISOString()}] monitor_on auf false gesetzt (Hardware ist aus)`);
-      }
-    } else {
-      debugLog.push(`[${new Date().toISOString()}] OK: Software-Status und Hardware-Status sind synchron`);
-    }
-    
-    // Zusätzliche Prüfungen  
-    const processPattern = 'ps aux | grep -E "stream.*\\.py" | grep -v grep';
-      
-    exec(processPattern, (psError, psStdout) => {
-      const streamProcessCount = psStdout ? psStdout.split('\n').filter(line => line.trim()).length : 0;
-      debugLog.push(`[${new Date().toISOString()}] Stream-Prozesse gefunden: ${streamProcessCount}`);
-      
-      const response = {
-        status: needsSync ? 'SYNCHRONIZED' : 'OK',
-        backend: 'Pure GStreamer',
-        before_sync: {
-          software_monitor_on: req.query.original_monitor_on ? JSON.parse(req.query.original_monitor_on) : 'unknown',
-          hardware_monitor_status: actualMonitorStatus
-        },
-        after_sync: {
-          software_monitor_on: monitor_on,
-          hardware_monitor_status: actualMonitorStatus,
-          sync_was_needed: needsSync
-        },
-        additional_info: {
-          stream_processes_running: streamProcessCount,
-          software_stream_flag: stream,
-          isChangingMonitor: isChangingMonitor
-        },
-        debug_log: debugLog,
-        duration_ms: Date.now() - startTime,
-        full_wlr_output: stdout
-      };
-      
-      res.status(200).json(response);
-    });
-  });
-});
-
-// Hard Monitor Reset für Debug-Zwecke
-app.get('/api/debug/hard_monitor_reset', (req, res) => {
-  const startTime = Date.now();
-  const debugLog = [];
-  
-  debugLog.push(`[${new Date().toISOString()}] Starte harten Monitor-Reset`);
-  debugLog.push(`[${new Date().toISOString()}] Vorher: monitor_on=${monitor_on}`);
-  
-  // Schritt 1: Monitor ausschalten
-  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', (offError, offStdout, offStderr) => {
-    debugLog.push(`[${new Date().toISOString()}] Schritt 1: Monitor OFF Befehl ausgeführt`);
-    if (offError) {
-      debugLog.push(`[${new Date().toISOString()}] ERROR beim Ausschalten: ${offError.message}`);
-    } else {
-      debugLog.push(`[${new Date().toISOString()}] Monitor OFF erfolgreich`);
-    }
-    // monitor_on wird IMMER auf false gesetzt bei Hard Reset
-    monitor_on = false;
-    debugLog.push(`[${new Date().toISOString()}] monitor_on auf false gesetzt`);
-    
-    // Warte 2 Sekunden
-    setTimeout(() => {
-      debugLog.push(`[${new Date().toISOString()}] Schritt 2: 2 Sekunden gewartet`);
-      
-      // Schritt 2: Monitor einschalten
-      exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', (onError, onStdout, onStderr) => {
-        debugLog.push(`[${new Date().toISOString()}] Schritt 3: Monitor ON Befehl ausgeführt`);
-        if (onError) {
-          debugLog.push(`[${new Date().toISOString()}] ERROR beim Einschalten: ${onError.message}`);
-          monitor_on = false;
-        } else {
-          debugLog.push(`[${new Date().toISOString()}] Monitor ON erfolgreich`);
-          monitor_on = true;
-        }
-        
-        // Schritt 3: Status verifizieren
-        setTimeout(() => {
-          exec('WAYLAND_DISPLAY="wayland-1" wlr-randr', (verifyError, verifyStdout) => {
-            debugLog.push(`[${new Date().toISOString()}] Schritt 4: Status-Verifikation`);
-            
-            let actualStatus = 'unknown';
-            if (!verifyError && verifyStdout) {
-              const hdmiMatch = verifyStdout.match(/HDMI-A-1[\s\S]*?(?=\n\w|$)/);
-              if (hdmiMatch) {
-                actualStatus = hdmiMatch[0].includes('Enabled: yes') ? 'on' : 'off';
-              }
-            }
-            
-            debugLog.push(`[${new Date().toISOString()}] Verifikation: Hardware-Status = ${actualStatus}`);
-            debugLog.push(`[${new Date().toISOString()}] Software monitor_on = ${monitor_on}`);
-            
-            const isSuccess = actualStatus === 'on' && monitor_on === true;
-            debugLog.push(`[${new Date().toISOString()}] Reset ${isSuccess ? 'ERFOLGREICH' : 'FEHLGESCHLAGEN'}`);
-            
-            res.status(200).json({
-              status: isSuccess ? 'SUCCESS' : 'FAILED',
-              backend: 'Pure GStreamer',
-              before_reset: {
-                software_monitor_on: req.query.before_monitor_on || 'unknown'
-              },
-              after_reset: {
-                software_monitor_on: monitor_on,
-                hardware_status: actualStatus,
-                is_synchronized: monitor_on === (actualStatus === 'on')
-              },
-              debug_log: debugLog,
-              duration_ms: Date.now() - startTime,
-              full_wlr_output: verifyStdout || 'No output'
-            });
-          });
-        }, 1000);
-      });
-    }, 2000);
-  });
-});
-
-// Debug Wayland Environment - Vereinfachte Version
-app.get('/api/debug/wayland_env', (req, res) => {
-  const startTime = Date.now();
-  
-  // Teste nur die wichtigsten WAYLAND_DISPLAY Werte schnell
-  exec('WAYLAND_DISPLAY="wayland-0" wlr-randr --help', (error0, stdout0) => {
-    const wayland0Works = !error0;
-    
-    exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --help', (error1, stdout1) => {
-      const wayland1Works = !error1;
-      
-      exec('ps aux | grep sway | grep -v grep', (swayError, swayStdout) => {
-        const swayRunning = !swayError && swayStdout && swayStdout.includes('sway');
-        
-        const result = {
-          timestamp: new Date().toISOString(),
-          status: 'OK',
-          backend: 'Pure GStreamer',
-          wayland_tests: {
-            'wayland-0': wayland0Works,
-            'wayland-1': wayland1Works,
-            'wayland-0_error': error0 ? error0.message : null,
-            'wayland-1_error': error1 ? error1.message : null
-          },
-          system_info: {
-            sway_running: swayRunning,
-            sway_processes: swayStdout || 'none'
-          },
-          recommendations: [],
-          duration_ms: Date.now() - startTime
-        };
-        
-        if (wayland0Works && !wayland1Works) {
-          result.recommendations.push('Verwende WAYLAND_DISPLAY="wayland-0" statt "wayland-1"');
-        } else if (!wayland0Works && !wayland1Works) {
-          result.recommendations.push('CRITICAL: Kein WAYLAND_DISPLAY funktioniert!');
-        }
-        
-        res.status(200).json(result);
-      });
-    });
-  });
-});
-
-// Auto-Fix Wayland Display - Vereinfacht
-app.get('/api/debug/fix_wayland', (req, res) => {
-  const startTime = Date.now();
-  const debugLog = [];
-  
-  debugLog.push(`Starte Wayland-Fix um ${new Date().toISOString()}`);
-  
-  // Teste wayland-0 zuerst
-  exec('WAYLAND_DISPLAY="wayland-0" wlr-randr', (error0, stdout0) => {
-    debugLog.push(`Test wayland-0: ${error0 ? 'FEHLGESCHLAGEN' : 'OK'}`);
-    
-    if (!error0 && stdout0 && stdout0.includes('HDMI-A-1')) {
-      debugLog.push('wayland-0 funktioniert! Teste Monitor ON...');
-      
-      // Teste Monitor einschalten mit wayland-0
-      exec('WAYLAND_DISPLAY="wayland-0" wlr-randr --output HDMI-A-1 --on', (onError) => {
-        if (onError) {
-          debugLog.push(`Monitor ON mit wayland-0 fehlgeschlagen: ${onError.message}`);
-        } else {
-          debugLog.push('Monitor ON mit wayland-0 erfolgreich!');
-          monitor_on = true;
-        }
-        
-        res.status(200).json({
-          status: onError ? 'PARTIAL_SUCCESS' : 'SUCCESS',
-          backend: 'Pure GStreamer',
-          working_display: 'wayland-0',
-          recommended_change: 'Ändere alle "wayland-1" zu "wayland-0" in der Datei',
-          monitor_command_result: onError ? 'FAILED' : 'SUCCESS',
-          debug_log: debugLog,
-          duration_ms: Date.now() - startTime
-        });
-      });
-    } else {
-      // wayland-0 funktioniert nicht, teste wayland-1
-      exec('WAYLAND_DISPLAY="wayland-1" wlr-randr', (error1, stdout1) => {
-        debugLog.push(`Test wayland-1: ${error1 ? 'FEHLGESCHLAGEN' : 'OK'}`);
-        
-        if (!error1 && stdout1 && stdout1.includes('HDMI-A-1')) {
-          debugLog.push('wayland-1 funktioniert bereits korrekt');
-          res.status(200).json({
-            status: 'NO_CHANGE_NEEDED',
-            backend: 'Pure GStreamer',
-            working_display: 'wayland-1',
-            recommended_change: 'Aktueller wayland-1 funktioniert',
-            debug_log: debugLog,
-            duration_ms: Date.now() - startTime
-          });
-        } else {
-          debugLog.push('Weder wayland-0 noch wayland-1 funktionieren!');
-          res.status(500).json({
-            status: 'NO_WORKING_DISPLAY',
-            backend: 'Pure GStreamer',
-            working_display: null,
-            recommended_change: 'System-Problem: Kein Wayland-Display funktioniert',
-            debug_log: debugLog,
-            duration_ms: Date.now() - startTime,
-            next_steps: ['Raspberry Pi neustarten', 'Sway/Wayland-Compositor prüfen']
-          });
-        }
-      });
-    }
-  });
-});
-
-// Auto-Fix für fehlende Timer
 app.get('/api/debug/auto_fix_timer', (req, res) => {
-  const startTime = Date.now();
-  const debugLog = [];
-  
-  debugLog.push(`[${new Date().toISOString()}] Starte Auto-Fix für fehlende Timer`);
-  debugLog.push(`[${new Date().toISOString()}] Aktueller Status: monitor_on=${monitor_on}, stream=${stream}, stream_front_door=${stream_front_door}`);
-  debugLog.push(`[${new Date().toISOString()}] Timer Status: monitor_timer=${timer !== null}, stream_timer=${timer_stream !== null}`);
-  debugLog.push(`[${new Date().toISOString()}] Backend: Pure GStreamer`);
-  
-  let fixes = [];
-  
-  // Fix 1: Monitor ist an aber kein Auto-OFF Timer
-  if (monitor_on === true && (timer === null || timer_start_time === null)) {
-    debugLog.push(`[${new Date().toISOString()}] FIXING: Monitor ist AN aber kein Auto-OFF Timer läuft`);
-    clearTimeout(timer); // Sicherheitshalber
-    timer_start_time = null;
-    runTimer();
-    fixes.push('Monitor Auto-OFF Timer gestartet (5 Minuten)');
-    debugLog.push(`[${new Date().toISOString()}] Monitor Auto-OFF Timer gestartet`);
+  const fixes = [];
+
+  if (monitor_on && (timer === null || timer_start_time === null)) {
+    resetMonitorTimer();
+    fixes.push('Monitor Auto-OFF Timer gestartet');
   }
-  
-  // Fix 2: Streams laufen aber kein Auto-Stop Timer
-  if ((stream === true || stream_front_door === true) && (timer_stream === null || timer_stream_start_time === null)) {
-    debugLog.push(`[${new Date().toISOString()}] FIXING: Streams laufen aber kein Auto-Stop Timer`);
-    clearTimeout(timer_stream); // Sicherheitshalber
-    timer_stream_start_time = null;
-    runTimer_stream();
-    fixes.push('Stream Auto-Stop Timer gestartet (5 Minuten)');
-    debugLog.push(`[${new Date().toISOString()}] Stream Auto-Stop Timer gestartet`);
+
+  if (uiState.active && (timer_stream === null || timer_stream_start_time === null)) {
+    resetStreamTimer();
+    fixes.push('Stream Auto-Stop Timer gestartet');
   }
-  
-  // Zusätzlicher Fix: Monitor aus aber Timer laufen noch
-  if (monitor_on === false && (timer !== null && timer_start_time !== null)) {
-    debugLog.push(`[${new Date().toISOString()}] FIXING: Monitor ist AUS aber Auto-OFF Timer läuft noch`);
-    clearTimeout(timer);
-    timer_start_time = null;
-    fixes.push('Überflüssiger Monitor Auto-OFF Timer gestoppt');
-    debugLog.push(`[${new Date().toISOString()}] Überflüssiger Monitor Timer gestoppt`);
+
+  if (!monitor_on && timer !== null) {
+    stopMonitorTimer();
+    fixes.push('Ueberfluessigen Monitor-Timer gestoppt');
   }
-  
-  if (stream === false && stream_front_door === false && (timer_stream !== null && timer_stream_start_time !== null)) {
-    debugLog.push(`[${new Date().toISOString()}] FIXING: Keine Streams aber Auto-Stop Timer läuft noch`);
-    clearTimeout(timer_stream);
-    timer_stream_start_time = null;
-    fixes.push('Überflüssiger Stream Auto-Stop Timer gestoppt');
-    debugLog.push(`[${new Date().toISOString()}] Überflüssiger Stream Timer gestoppt`);
+
+  if (!uiState.active && timer_stream !== null) {
+    stopStreamTimer();
+    fixes.push('Ueberfluessigen Stream-Timer gestoppt');
   }
-  
-  const result = {
+
+  res.status(200).json({
     timestamp: new Date().toISOString(),
     status: fixes.length > 0 ? 'FIXED' : 'NO_FIX_NEEDED',
-    backend: 'Pure GStreamer',
+    backend: 'go2rtc',
     fixes_applied: fixes,
-    after_fix: {
-      monitor_on: monitor_on,
-      stream: stream,
-      stream_front_door: stream_front_door,
-      monitor_timer_running: timer !== null && timer_start_time !== null,
-      stream_timer_running: timer_stream !== null && timer_stream_start_time !== null
-    },
-    debug_log: debugLog,
-    duration_ms: Date.now() - startTime
-  };
-  
-  if (fixes.length > 0) {
-    debugLog.push(`[${new Date().toISOString()}] Auto-Fix abgeschlossen: ${fixes.length} Probleme behoben`);
-  } else {
-    debugLog.push(`[${new Date().toISOString()}] Keine Timer-Probleme gefunden`);
-  }
-  
-  res.status(200).json(result);
-});
-
-// Auto-Fix für kritische Hardware/Software Inkonsistenzen
-app.get('/api/debug/auto_fix_consistency', (req, res) => {
-  const startTime = Date.now();
-  const debugLog = [];
-  
-  debugLog.push(`[${new Date().toISOString()}] Starte Auto-Fix für Hardware/Software Konsistenz`);
-  debugLog.push(`[${new Date().toISOString()}] Aktueller monitor_on: ${monitor_on}`);
-  debugLog.push(`[${new Date().toISOString()}] Backend: Pure GStreamer`);
-  
-  // Prüfe aktuellen Hardware-Status
-  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr', (error, stdout, stderr) => {
-    if (error) {
-      debugLog.push(`[${new Date().toISOString()}] ERROR: Kann Hardware-Status nicht prüfen: ${error.message}`);
-      return res.status(500).json({
-        status: 'ERROR',
-        message: 'Hardware-Status-Prüfung fehlgeschlagen',
-        backend: 'Pure GStreamer',
-        debug_log: debugLog,
-        duration_ms: Date.now() - startTime
-      });
-    }
-    
-    let actualMonitorStatus = 'unknown';
-    const hdmiMatch = stdout.match(/HDMI-A-1[\s\S]*?(?=\n\w|$)/);
-    
-    if (hdmiMatch) {
-      actualMonitorStatus = hdmiMatch[0].includes('Enabled: yes') ? 'on' : 'off';
-      debugLog.push(`[${new Date().toISOString()}] Hardware-Status: ${actualMonitorStatus}`);
-    } else {
-      debugLog.push(`[${new Date().toISOString()}] WARNING: HDMI-A-1 nicht erkannt`);
-      return res.status(500).json({
-        status: 'ERROR',
-        message: 'HDMI-A-1 Output nicht gefunden',
-        backend: 'Pure GStreamer',
-        debug_log: debugLog,
-        duration_ms: Date.now() - startTime
-      });
-    }
-    
-    // Prüfe kritische Inkonsistenzen
-    const criticalInconsistency = (monitor_on === true && actualMonitorStatus === 'off');
-    const minorInconsistency = (monitor_on === false && actualMonitorStatus === 'on');
-    
-    if (criticalInconsistency) {
-      debugLog.push(`[${new Date().toISOString()}] CRITICAL: Software=ON, Hardware=OFF - Fixe Software-Status`);
-      monitor_on = false;
-      debugLog.push(`[${new Date().toISOString()}] monitor_on auf false korrigiert`);
-      
-      // Stoppe auch Timer da Monitor eh aus ist
-      clearTimeout(timer);
-      timer_start_time = null;
-      clearTimeout(timer_stream);
-      timer_stream_start_time = null;
-      debugLog.push(`[${new Date().toISOString()}] Timer gestoppt da Monitor aus ist`);
-      
-      return res.status(200).json({
-        status: 'CRITICAL_FIXED',
-        action: 'Software-Status auf Hardware-Status synchronisiert',
-        backend: 'Pure GStreamer',
-        before: { software_monitor_on: true, hardware_status: 'off' },
-        after: { software_monitor_on: false, hardware_status: 'off' },
-        debug_log: debugLog,
-        duration_ms: Date.now() - startTime
-      });
-      
-    } else if (minorInconsistency) {
-      debugLog.push(`[${new Date().toISOString()}] MINOR: Software=OFF, Hardware=ON - Fixe Software-Status`);
-      monitor_on = true;
-      debugLog.push(`[${new Date().toISOString()}] monitor_on auf true korrigiert`);
-      
-      // Starte Timer da Monitor an ist
-      clearTimeout(timer);
-      timer_start_time = null;
-      runTimer();
-      clearTimeout(timer_stream);
-      timer_stream_start_time = null;
-      runTimer_stream();
-      debugLog.push(`[${new Date().toISOString()}] Auto-OFF Timer gestartet`);
-      
-      return res.status(200).json({
-        status: 'MINOR_FIXED',
-        action: 'Software-Status auf Hardware-Status synchronisiert und Timer gestartet',
-        backend: 'Pure GStreamer',
-        before: { software_monitor_on: false, hardware_status: 'on' },
-        after: { software_monitor_on: true, hardware_status: 'on' },
-        debug_log: debugLog,
-        duration_ms: Date.now() - startTime
-      });
-      
-    } else {
-      debugLog.push(`[${new Date().toISOString()}] OK: Software und Hardware sind bereits synchron`);
-      
-      return res.status(200).json({
-        status: 'NO_FIX_NEEDED',
-        action: 'Keine Inkonsistenz gefunden',
-        backend: 'Pure GStreamer',
-        current_state: { software_monitor_on: monitor_on, hardware_status: actualMonitorStatus },
-        debug_log: debugLog,
-        duration_ms: Date.now() - startTime
-      });
-    }
   });
 });
 
+app.get('/api/debug/auto_fix_consistency', async (req, res) => {
+  const monitorStatus = await getMonitorStatus();
+
+  if (monitorStatus.actualMonitorStatus === 'off' && monitor_on) {
+    monitor_on = false;
+    stopMonitorTimer();
+    stopStreamTimer();
+    clearStreamState();
+    res.status(200).json({
+      status: 'CRITICAL_FIXED',
+      backend: 'go2rtc',
+      current_state: { software_monitor_on: monitor_on, hardware_status: 'off' },
+    });
+    return;
+  }
+
+  if (monitorStatus.actualMonitorStatus === 'on' && !monitor_on) {
+    monitor_on = true;
+    resetMonitorTimer();
+    res.status(200).json({
+      status: 'MINOR_FIXED',
+      backend: 'go2rtc',
+      current_state: { software_monitor_on: monitor_on, hardware_status: 'on' },
+    });
+    return;
+  }
+
+  res.status(200).json({
+    status: 'NO_FIX_NEEDED',
+    backend: 'go2rtc',
+    current_state: {
+      software_monitor_on: monitor_on,
+      hardware_status: monitorStatus.actualMonitorStatus,
+    },
+  });
+});
+
+setTimeout(() => {
+  exec(`firefox --kiosk=http://127.0.0.1:${port}/status/`, () => {});
+}, 10000);
+
+setTimeout(() => {
+  turnMonitorOffCommand(() => {
+    monitor_on = false;
+  });
+}, 30000);
+
 function exit() {
-  console.log("Exiting");
-  // pir.unexport();
+  console.log('Exiting');
   process.exit();
 }
 

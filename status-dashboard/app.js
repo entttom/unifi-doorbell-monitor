@@ -6,6 +6,7 @@ const CONFIG = {
   },
   endpoints: {
     calendar: "/api/calendar",
+    uiState: "/api/ui_state",
     energy:
       "http://192.168.1.2:8087/getBulk/" +
       [
@@ -33,6 +34,7 @@ const CALENDAR_MAX_INSTANCES = 400;
 let lastCalendarRawEvents = null;
 let calendarLayoutFrame = 0;
 let calendarRelayoutSuspended = 0;
+let uiStatePollHandle = 0;
 
 const WEATHER_CODE_LABELS = {
   0: "Klar",
@@ -103,10 +105,12 @@ function init() {
   loadCalendar();
   loadWeather();
   loadEnergy();
+  void loadUiState();
 
   window.setInterval(loadCalendar, CONFIG.refresh.calendar);
   window.setInterval(loadWeather, CONFIG.refresh.weather);
   window.setInterval(loadEnergy, CONFIG.refresh.energy);
+  uiStatePollHandle = window.setInterval(loadUiState, 1000);
 
   elements.frontYardButton.addEventListener("click", triggerFrontYard);
 }
@@ -240,6 +244,25 @@ function handleUnsupportedFileProtocol() {
   renderCalendarMessage("Bitte das Dashboard über einen lokalen Webserver starten.");
   renderWeatherFallback("Bitte per http:// starten.");
   renderEnergyFallback();
+}
+
+async function loadUiState() {
+  try {
+    const response = await fetch(`${CONFIG.endpoints.uiState}?t=${Date.now()}`, {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new Error(`UI-State konnte nicht geladen werden (${response.status})`);
+    }
+
+    const data = await response.json();
+    if (data && data.ui_state && data.ui_state.active && data.streamPath) {
+      window.clearInterval(uiStatePollHandle);
+      window.location.replace(data.streamPath);
+    }
+  } catch (error) {
+    console.error(error);
+  }
 }
 
 function updateClock() {

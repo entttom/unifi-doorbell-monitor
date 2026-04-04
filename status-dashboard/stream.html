@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haus Stream</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body class="stream-page">
+    <main class="stream-shell">
+      <section class="stream-panel">
+        <header class="stream-header">
+          <div>
+            <p class="eyebrow">Live</p>
+            <h1 id="stream-title">Stream wird geladen ...</h1>
+          </div>
+          <div class="stream-header-actions">
+            <p class="stream-countdown" id="stream-countdown">--</p>
+            <button class="stream-close-button" id="stream-close-button" type="button">
+              Schliessen
+            </button>
+          </div>
+        </header>
+
+        <div class="stream-frame-wrap">
+          <iframe
+            class="stream-frame"
+            id="stream-frame"
+            title="Kamerastream"
+            allow="autoplay; fullscreen; camera; microphone"
+          ></iframe>
+        </div>
+      </section>
+
+      <aside class="stream-actions-panel">
+        <header class="panel-header compact">
+          <div>
+            <p class="eyebrow">Aktionen</p>
+            <h2 id="stream-actions-title">Steuerung</h2>
+          </div>
+          <p class="panel-note" id="stream-status-note">Bereit</p>
+        </header>
+        <div class="stream-actions-list" id="stream-actions-list">
+          <div class="empty-state">
+            <p>Keine Aktionen fuer diesen Stream.</p>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <script src="stream.js"></script>
+  </body>
+</html>

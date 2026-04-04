@@ -1,0 +1,39 @@
+{
+  "ui": {
+    "dashboardPath": "/status/",
+    "streamPath": "/status/stream.html",
+    "pollIntervalMs": 1000,
+    "go2rtcBasePath": "/go2rtc",
+    "streamModes": {
+      "main": {
+        "streamKey": "doorbell",
+        "title": "Haustuer",
+        "showActions": true
+      },
+      "front_yard": {
+        "streamKey": "frontyard",
+        "title": "Vorgarten",
+        "showActions": false
+      },
+      "front_yard_after_ring": {
+        "streamKey": "frontyard",
+        "title": "Vorgarten",
+        "showActions": true
+      }
+    }
+  },
+  "actions": [
+    {
+      "id": "open-gate",
+      "label": "Gartentor oeffnen",
+      "method": "GET",
+      "url": "http://192.168.1.2:8087/set/openknx.0.Verbraucher.Garten_Garage.Gartentuere(Schalten)?value=true"
+    },
+    {
+      "id": "open-door",
+      "label": "Eingangstuere oeffnen",
+      "method": "GET",
+      "url": "http://192.168.1.2:8087/set/openknx.0.Verbraucher.Erdgeschoss.1_Vorraum-Tueroeffner(Schalten)?value=true"
+    }
+  ]
+}
