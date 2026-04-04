@@ -88,6 +88,7 @@ const elements = {
   heatingChip: document.getElementById("heating-chip"),
   heatingState: document.getElementById("heating-state"),
   frontYardButton: document.getElementById("front-yard-button"),
+  settingsButton: document.getElementById("settings-button"),
 };
 
 function init() {
@@ -113,6 +114,7 @@ function init() {
   uiStatePollHandle = window.setInterval(loadUiState, 1000);
 
   elements.frontYardButton.addEventListener("click", triggerFrontYard);
+  elements.settingsButton.addEventListener("click", openSettings);
 }
 
 function initCalendarLayoutObserver() {
@@ -771,6 +773,10 @@ async function triggerFrontYard() {
       elements.frontYardButton.disabled = false;
     }, remaining);
   }
+}
+
+function openSettings() {
+  window.location.assign("/status/settings.html");
 }
 
 function extractValue(entry) {

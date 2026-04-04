@@ -576,6 +576,12 @@ h2 {
   box-shadow: 0 8px 18px rgba(29, 61, 47, 0.28);
 }
 
+.action-button-secondary {
+  background: linear-gradient(135deg, #efe5cf 0%, #e3d2ad 100%);
+  color: #36413a;
+  box-shadow: 0 8px 18px rgba(97, 80, 34, 0.16);
+}
+
 .action-button:disabled {
   cursor: wait;
   opacity: 0.75;
@@ -653,6 +659,10 @@ body.stream-page .panel-note {
   font-weight: 700;
 }
 
+.stream-settings-button {
+  background: #d9c8a2;
+}
+
 .stream-frame-wrap {
   min-height: 0;
   border-radius: 18px;
@@ -699,6 +709,105 @@ body.stream-page .panel-note {
   transform: none;
 }
 
+body.settings-page {
+  background:
+    radial-gradient(circle at top left, rgba(36, 91, 69, 0.12), transparent 26%),
+    linear-gradient(160deg, #f1ede3 0%, #e8e1d1 100%);
+}
+
+.settings-shell {
+  min-height: 100dvh;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 68fr) minmax(280px, 32fr);
+  gap: 14px;
+}
+
+.settings-panel {
+  padding: 18px 20px;
+}
+
+.settings-panel-main {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.settings-header {
+  align-items: center;
+}
+
+.settings-header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.settings-header-actions .action-button {
+  width: auto;
+  min-width: 132px;
+  padding: 0 18px;
+}
+
+.settings-status-note {
+  min-height: 20px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-field span {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.settings-field input {
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  font: inherit;
+  color: var(--text);
+}
+
+.settings-field input:focus {
+  outline: 2px solid rgba(36, 91, 69, 0.22);
+  border-color: #9fc4ae;
+}
+
+.settings-hint {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(239, 229, 207, 0.72);
+  color: #5e4b24;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .calendar-list {
     transition: none;
@@ -719,5 +828,13 @@ body.stream-page .panel-note {
 
   .stream-panel {
     min-height: 65dvh;
+  }
+
+  .settings-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-grid {
+    grid-template-columns: 1fr;
   }
 }

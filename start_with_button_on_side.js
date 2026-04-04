@@ -19,10 +19,13 @@ const MONITOR_TIMEOUT_MS = 300000;
 const STREAM_TIMEOUT_MS = 300000;
 
 const STATUS_DIR = path.join(__dirname, 'status-dashboard');
+const STATUS_CONFIG_DIR = path.join(STATUS_DIR, 'config');
 const CONFIG_DIR = path.join(__dirname, 'config');
-const CALENDAR_URL_PATH = path.join(CONFIG_DIR, 'calendar-url.txt');
+const CALENDAR_URL_PATH = path.join(STATUS_CONFIG_DIR, 'calendar-url.txt');
+const CALENDAR_URL_EXAMPLE_PATH = path.join(STATUS_CONFIG_DIR, 'calendar-url.example.txt');
 const APP_CONFIG_PATH = path.join(CONFIG_DIR, 'app-config.json');
 const APP_CONFIG_EXAMPLE_PATH = path.join(CONFIG_DIR, 'app-config.example.json');
+const GO2RTC_CONFIG_PATH = path.join(CONFIG_DIR, 'go2rtc.yaml');
 const GO2RTC_CONFIG_EXAMPLE_PATH = path.join(CONFIG_DIR, 'go2rtc.yaml.example');
 
 const DEFAULT_APP_CONFIG = {
@@ -171,6 +174,330 @@ function loadAppConfig() {
   };
 }
 
+function yamlQuote(value) {
+  return JSON.stringify(String(value));
+}
+
+function normalizeText(value, fallback) {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  return normalized || fallback;
+}
+
+function normalizeHttpUrl(value, fieldName, { allowEmpty = false } = {}) {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!normalized) {
+    if (allowEmpty) {
+      return '';
+    }
+    throw new Error(`${fieldName} ist erforderlich.`);
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(normalized);
+  } catch (error) {
+    throw new Error(`${fieldName} ist keine gueltige URL.`);
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`${fieldName} muss mit http:// oder https:// beginnen.`);
+  }
+
+  return normalized;
+}
+
+function normalizeRtspUrl(value, fieldName) {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!normalized) {
+    throw new Error(`${fieldName} ist erforderlich.`);
+  }
+
+  if (!normalized.startsWith('rtsp://')) {
+    throw new Error(`${fieldName} muss mit rtsp:// beginnen.`);
+  }
+
+  return normalized;
+}
+
+async function readTextFile(filePath, fallbackPath = null) {
+  try {
+    return (await fsPromises.readFile(filePath, 'utf8')).trim();
+  } catch (error) {
+    if (fallbackPath) {
+      return readTextFile(fallbackPath, null);
+    }
+    throw error;
+  }
+}
+
+async function readGo2RtcConfigText() {
+  return readTextFile(GO2RTC_CONFIG_PATH, GO2RTC_CONFIG_EXAMPLE_PATH);
+}
+
+function extractGo2RtcValue(configText, sectionName, defaultValue = '') {
+  const escapedSection = sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = configText.match(new RegExp(`^${escapedSection}:\\s*"?(.*?)"?$`, 'm'));
+  return match ? match[1].trim() : defaultValue;
+}
+
+function extractYamlSection(configText, sectionName) {
+  const lines = configText.split(/\r?\n/);
+  const collected = [];
+  let inSection = false;
+
+  for (const line of lines) {
+    if (!inSection) {
+      if (line.trim() === `${sectionName}:`) {
+        inSection = true;
+      }
+      continue;
+    }
+
+    if (line && !line.startsWith(' ')) {
+      break;
+    }
+
+    collected.push(line);
+  }
+
+  return collected.join('\n');
+}
+
+function extractStreamUrl(configText, streamName, defaultValue = '') {
+  const escapedName = streamName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = configText.match(new RegExp(`^\\s*${escapedName}:\\s*$[\\r\\n]+^\\s*-\\s*(.+)$`, 'm'));
+  return match ? match[1].trim() : defaultValue;
+}
+
+async function loadGo2RtcSettings() {
+  const configText = await readGo2RtcConfigText();
+  const apiSection = extractYamlSection(configText, 'api');
+  const rtspSection = extractYamlSection(configText, 'rtsp');
+  const webrtcSection = extractYamlSection(configText, 'webrtc');
+
+  return {
+    apiListen: extractGo2RtcValue(apiSection, '  listen', '127.0.0.1:1984'),
+    rtspListen: extractGo2RtcValue(rtspSection, '  listen', '127.0.0.1:8554'),
+    webrtcListen: extractGo2RtcValue(webrtcSection, '  listen', ':8555'),
+    doorbellUrl: extractStreamUrl(configText, 'doorbell'),
+    frontyardUrl: extractStreamUrl(configText, 'frontyard'),
+  };
+}
+
+async function loadSettingsPayload() {
+  const currentCalendarUrl = await readTextFile(CALENDAR_URL_PATH, CALENDAR_URL_EXAMPLE_PATH);
+  const go2rtcSettings = await loadGo2RtcSettings();
+  const gateAction = appConfig.actions.find((action) => action.id === 'open-gate') || null;
+  const doorAction = appConfig.actions.find((action) => action.id === 'open-door') || null;
+
+  return {
+    calendarUrl: currentCalendarUrl,
+    streams: {
+      doorbellUrl: go2rtcSettings.doorbellUrl,
+      frontyardUrl: go2rtcSettings.frontyardUrl,
+      apiListen: go2rtcSettings.apiListen,
+      rtspListen: go2rtcSettings.rtspListen,
+      webrtcListen: go2rtcSettings.webrtcListen,
+    },
+    ui: {
+      mainTitle: getUiMode('main').title,
+      frontYardTitle: getUiMode('front_yard').title,
+      frontYardAfterRingTitle: getUiMode('front_yard_after_ring').title,
+      dashboardPath: appConfig.ui.dashboardPath,
+      streamPath: appConfig.ui.streamPath,
+      go2rtcBasePath: appConfig.ui.go2rtcBasePath,
+      pollIntervalMs: appConfig.ui.pollIntervalMs,
+    },
+    actions: {
+      openGate: {
+        label: gateAction ? gateAction.label : DEFAULT_APP_CONFIG.actions[0].label,
+        method: gateAction ? gateAction.method || 'GET' : 'GET',
+        url: gateAction ? gateAction.url : '',
+      },
+      openDoor: {
+        label: doorAction ? doorAction.label : DEFAULT_APP_CONFIG.actions[1].label,
+        method: doorAction ? doorAction.method || 'GET' : 'GET',
+        url: doorAction ? doorAction.url : '',
+      },
+    },
+  };
+}
+
+async function ensureConfigDirectories() {
+  await fsPromises.mkdir(CONFIG_DIR, { recursive: true });
+  await fsPromises.mkdir(STATUS_CONFIG_DIR, { recursive: true });
+}
+
+function serializeGo2RtcConfig(settings) {
+  return [
+    'api:',
+    `  listen: ${yamlQuote(settings.apiListen)}`,
+    '',
+    'rtsp:',
+    `  listen: ${yamlQuote(settings.rtspListen)}`,
+    '',
+    'webrtc:',
+    `  listen: ${yamlQuote(settings.webrtcListen)}`,
+    '',
+    'preload:',
+    '  doorbell: "video"',
+    '  frontyard: "video"',
+    '',
+    'streams:',
+    '  doorbell:',
+    `    - ${settings.doorbellUrl}`,
+    '  frontyard:',
+    `    - ${settings.frontyardUrl}`,
+    '',
+  ].join('\n');
+}
+
+function buildAppConfigFromSettings(input) {
+  const gateAction = input.actions.openGate.url
+    ? {
+        id: 'open-gate',
+        label: input.actions.openGate.label,
+        method: 'GET',
+        url: input.actions.openGate.url,
+      }
+    : null;
+
+  const doorAction = input.actions.openDoor.url
+    ? {
+        id: 'open-door',
+        label: input.actions.openDoor.label,
+        method: 'GET',
+        url: input.actions.openDoor.url,
+      }
+    : null;
+
+  return {
+    ui: {
+      dashboardPath: appConfig.ui.dashboardPath,
+      streamPath: appConfig.ui.streamPath,
+      pollIntervalMs: appConfig.ui.pollIntervalMs,
+      go2rtcBasePath: appConfig.ui.go2rtcBasePath,
+      streamModes: {
+        main: {
+          streamKey: 'doorbell',
+          title: input.ui.mainTitle,
+          showActions: true,
+        },
+        front_yard: {
+          streamKey: 'frontyard',
+          title: input.ui.frontYardTitle,
+          showActions: false,
+        },
+        front_yard_after_ring: {
+          streamKey: 'frontyard',
+          title: input.ui.frontYardAfterRingTitle,
+          showActions: true,
+        },
+      },
+    },
+    actions: [gateAction, doorAction].filter(Boolean),
+  };
+}
+
+function validateSettingsInput(rawInput) {
+  const gateUrl = normalizeHttpUrl(
+    rawInput && rawInput.actions && rawInput.actions.openGate
+      ? rawInput.actions.openGate.url
+      : '',
+    'Gartentor-URL',
+    { allowEmpty: true }
+  );
+
+  const doorUrl = normalizeHttpUrl(
+    rawInput && rawInput.actions && rawInput.actions.openDoor
+      ? rawInput.actions.openDoor.url
+      : '',
+    'Eingangstuer-URL',
+    { allowEmpty: true }
+  );
+
+  return {
+    calendarUrl: normalizeHttpUrl(rawInput ? rawInput.calendarUrl : '', 'Kalender-URL'),
+    streams: {
+      doorbellUrl: normalizeRtspUrl(
+        rawInput && rawInput.streams ? rawInput.streams.doorbellUrl : '',
+        'Doorbell-RTSP-URL'
+      ),
+      frontyardUrl: normalizeRtspUrl(
+        rawInput && rawInput.streams ? rawInput.streams.frontyardUrl : '',
+        'Frontyard-RTSP-URL'
+      ),
+      apiListen: normalizeText(
+        rawInput && rawInput.streams ? rawInput.streams.apiListen : '',
+        '127.0.0.1:1984'
+      ),
+      rtspListen: normalizeText(
+        rawInput && rawInput.streams ? rawInput.streams.rtspListen : '',
+        '127.0.0.1:8554'
+      ),
+      webrtcListen: normalizeText(
+        rawInput && rawInput.streams ? rawInput.streams.webrtcListen : '',
+        ':8555'
+      ),
+    },
+    ui: {
+      mainTitle: normalizeText(rawInput && rawInput.ui ? rawInput.ui.mainTitle : '', 'Haustuer'),
+      frontYardTitle: normalizeText(
+        rawInput && rawInput.ui ? rawInput.ui.frontYardTitle : '',
+        'Vorgarten'
+      ),
+      frontYardAfterRingTitle: normalizeText(
+        rawInput && rawInput.ui ? rawInput.ui.frontYardAfterRingTitle : '',
+        'Vorgarten'
+      ),
+    },
+    actions: {
+      openGate: {
+        label: normalizeText(
+          rawInput && rawInput.actions && rawInput.actions.openGate
+            ? rawInput.actions.openGate.label
+            : '',
+          'Gartentor oeffnen'
+        ),
+        url: gateUrl,
+      },
+      openDoor: {
+        label: normalizeText(
+          rawInput && rawInput.actions && rawInput.actions.openDoor
+            ? rawInput.actions.openDoor.label
+            : '',
+          'Eingangstuere oeffnen'
+        ),
+        url: doorUrl,
+      },
+    },
+  };
+}
+
+async function restartGo2RtcService() {
+  const commands = [
+    'sudo -n /bin/systemctl restart go2rtc',
+    'sudo -n /usr/bin/systemctl restart go2rtc',
+    '/bin/systemctl restart go2rtc',
+    'systemctl restart go2rtc',
+  ];
+
+  for (const command of commands) {
+    const result = await runCommand(command, 3000);
+    if (result.ok) {
+      return {
+        ok: true,
+        command,
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    message: 'go2rtc konnte nicht automatisch neu gestartet werden.',
+  };
+}
+
 function getUiMode(mode) {
   return appConfig.ui.streamModes[mode] || appConfig.ui.streamModes.main;
 }
@@ -257,6 +584,7 @@ function buildUiStatePayload() {
     backend: 'go2rtc',
     dashboardPath: appConfig.ui.dashboardPath,
     streamPath: appConfig.ui.streamPath,
+    settingsPath: '/status/settings.html',
     pollIntervalMs: appConfig.ui.pollIntervalMs,
     monitor_on,
     stream,
@@ -442,9 +770,9 @@ function getMonitorStatus() {
   });
 }
 
-function runCommand(command) {
+function runCommand(command, timeoutMs = 4000) {
   return new Promise((resolve) => {
-    exec(command, (error, stdout, stderr) => {
+    exec(command, { timeout: timeoutMs }, (error, stdout, stderr) => {
       resolve({
         ok: !error,
         stdout: stdout || '',
@@ -515,6 +843,61 @@ app.get('/api/calendar', async (req, res) => {
 
 app.get('/api/ui_state', (req, res) => {
   sendJsonOk(res, buildUiStatePayload());
+});
+
+app.get('/api/settings', async (req, res) => {
+  try {
+    const settings = await loadSettingsPayload();
+    sendJsonOk(res, {
+      settings,
+      service: {
+        restartCommand: 'sudo systemctl restart go2rtc',
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      Status: 'Error',
+      Message: error.message,
+    });
+  }
+});
+
+app.post('/api/settings', async (req, res) => {
+  try {
+    const normalized = validateSettingsInput(req.body || {});
+    const nextAppConfig = buildAppConfigFromSettings(normalized);
+    const nextGo2RtcConfig = serializeGo2RtcConfig(normalized.streams);
+
+    await ensureConfigDirectories();
+    await fsPromises.writeFile(
+      APP_CONFIG_PATH,
+      `${JSON.stringify(nextAppConfig, null, 2)}\n`,
+      'utf8'
+    );
+    await fsPromises.writeFile(GO2RTC_CONFIG_PATH, nextGo2RtcConfig, 'utf8');
+    await fsPromises.writeFile(CALENDAR_URL_PATH, `${normalized.calendarUrl}\n`, 'utf8');
+
+    appConfig = loadAppConfig();
+    if (uiState.active) {
+      const refreshedMode = getUiMode(uiState.mode);
+      uiState = {
+        ...uiState,
+        title: refreshedMode.title,
+      };
+    }
+
+    const restart = await restartGo2RtcService();
+    sendJsonOk(res, {
+      saved: true,
+      restart,
+      settings: await loadSettingsPayload(),
+    });
+  } catch (error) {
+    res.status(400).json({
+      Status: 'Error',
+      Message: error.message,
+    });
+  }
 });
 
 app.all('/api/actions/:id', async (req, res) => {

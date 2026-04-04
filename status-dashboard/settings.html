@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haus Einstellungen</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body class="settings-page">
+    <main class="settings-shell">
+      <section class="panel settings-panel settings-panel-main">
+        <header class="panel-header settings-header">
+          <div>
+            <p class="eyebrow">Konfiguration</p>
+            <h1>Dashboard & Streams</h1>
+          </div>
+          <div class="settings-header-actions">
+            <button class="action-button action-button-secondary" id="settings-back-button" type="button">
+              Zurueck
+            </button>
+            <button class="action-button" id="settings-save-button" type="button">
+              Speichern
+            </button>
+          </div>
+        </header>
+
+        <p class="settings-status-note" id="settings-status-note">Lade Konfiguration ...</p>
+
+        <section class="settings-section">
+          <h2>Kalender</h2>
+          <label class="settings-field">
+            <span>Kalender-URL</span>
+            <input id="calendar-url" type="url" placeholder="https://..." spellcheck="false">
+          </label>
+        </section>
+
+        <section class="settings-section">
+          <h2>go2rtc</h2>
+          <div class="settings-grid">
+            <label class="settings-field">
+              <span>Doorbell RTSP</span>
+              <input id="doorbell-url" type="text" placeholder="rtsp://..." spellcheck="false">
+            </label>
+            <label class="settings-field">
+              <span>Frontyard RTSP</span>
+              <input id="frontyard-url" type="text" placeholder="rtsp://..." spellcheck="false">
+            </label>
+            <label class="settings-field">
+              <span>API Listen</span>
+              <input id="api-listen" type="text" placeholder="127.0.0.1:1984" spellcheck="false">
+            </label>
+            <label class="settings-field">
+              <span>RTSP Listen</span>
+              <input id="rtsp-listen" type="text" placeholder="127.0.0.1:8554" spellcheck="false">
+            </label>
+            <label class="settings-field">
+              <span>WebRTC Listen</span>
+              <input id="webrtc-listen" type="text" placeholder=":8555" spellcheck="false">
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h2>Titel</h2>
+          <div class="settings-grid">
+            <label class="settings-field">
+              <span>Hauptstream</span>
+              <input id="main-title" type="text" placeholder="Haustuer">
+            </label>
+            <label class="settings-field">
+              <span>Vorgarten</span>
+              <input id="frontyard-title" type="text" placeholder="Vorgarten">
+            </label>
+            <label class="settings-field">
+              <span>Vorgarten nach Klingeln</span>
+              <input id="frontyard-after-ring-title" type="text" placeholder="Vorgarten">
+            </label>
+          </div>
+        </section>
+      </section>
+
+      <section class="panel settings-panel">
+        <header class="panel-header compact">
+          <div>
+            <p class="eyebrow">Aktionen</p>
+            <h2>Tuer & Tor</h2>
+          </div>
+        </header>
+
+        <div class="settings-stack">
+          <label class="settings-field">
+            <span>Gartentor Label</span>
+            <input id="gate-label" type="text" placeholder="Gartentor oeffnen">
+          </label>
+          <label class="settings-field">
+            <span>Gartentor URL</span>
+            <input id="gate-url" type="url" placeholder="http://..." spellcheck="false">
+          </label>
+          <label class="settings-field">
+            <span>Eingangstuer Label</span>
+            <input id="door-label" type="text" placeholder="Eingangstuere oeffnen">
+          </label>
+          <label class="settings-field">
+            <span>Eingangstuer URL</span>
+            <input id="door-url" type="url" placeholder="http://..." spellcheck="false">
+          </label>
+        </div>
+
+        <div class="settings-hint">
+          <p>
+            Leere Aktions-URLs deaktivieren den jeweiligen Button. Beim Speichern wird `go2rtc`
+            serverseitig neu geladen.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <script src="settings.js"></script>
+  </body>
+</html>

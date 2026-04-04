@@ -10,6 +10,7 @@ const elements = {
   countdown: document.getElementById("stream-countdown"),
   statusNote: document.getElementById("stream-status-note"),
   closeButton: document.getElementById("stream-close-button"),
+  settingsButton: document.getElementById("stream-settings-button"),
   frame: document.getElementById("stream-frame"),
   actionsList: document.getElementById("stream-actions-list"),
 };
@@ -19,6 +20,7 @@ let currentPlayerUrl = "";
 
 function init() {
   elements.closeButton.addEventListener("click", closeStream);
+  elements.settingsButton.addEventListener("click", openSettings);
   void loadUiState();
   uiStateInterval = window.setInterval(loadUiState, 1000);
 }
@@ -138,6 +140,10 @@ async function closeStream() {
   } finally {
     window.location.replace("/status/");
   }
+}
+
+function openSettings() {
+  window.location.assign("/status/settings.html");
 }
 
 function escapeHtml(value) {

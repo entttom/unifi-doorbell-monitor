@@ -8,6 +8,7 @@ Dieses Projekt zeigt ein Haus-Dashboard im Firefox-Kiosk und blendet bei Klingel
 - Firefox bleibt im Kiosk auf `/status/`.
 - `go2rtc` liest die RTSP-Streams und liefert sie browserfaehig per WebRTC aus.
 - Die Stream-Ansicht laeuft als eigene Seite innerhalb der Weboberflaeche, nicht mehr als separates Python-Fenster.
+- Streams, Kalender-URL und Aktionsbuttons koennen direkt ueber die Weboberflaeche bearbeitet werden.
 
 ## Installation auf Raspberry Pi
 
@@ -32,6 +33,7 @@ Das Skript:
   - `config/app-config.json`
   - `status-dashboard/config/calendar-url.txt`
 - registriert `go2rtc` als `systemd`-Dienst
+- hinterlegt einen gezielten `sudoers`-Eintrag, damit die Weboberflaeche `go2rtc` nach Konfigurationsaenderungen neu starten kann
 - startet die Node-App ueber PM2
 
 ## Wichtige Dateien
@@ -46,12 +48,32 @@ Das Skript:
   Dashboard
 - `status-dashboard/stream.html`
   Dedizierte Stream-Seite
+- `status-dashboard/settings.html`
+  Einstellungen fuer Streams, Kalender und Aktionsbuttons
 
 ## Konfiguration
 
+### Weboberflaeche
+
+Die Konfiguration ist unter `/status/settings.html` erreichbar. Dort lassen sich aendern:
+
+- Kalender-URL
+- Doorbell- und Frontyard-RTSP-URL
+- go2rtc Listen-Adressen
+- Stream-Titel
+- URLs und Labels fuer Gartentor und Eingangstuer
+
+Beim Speichern schreibt die Node-App:
+
+- `config/app-config.json`
+- `config/go2rtc.yaml`
+- `status-dashboard/config/calendar-url.txt`
+
+und versucht danach automatisch `go2rtc` neu zu starten.
+
 ### go2rtc Streams
 
-Die RTSP-Quellen liegen in `config/go2rtc.yaml`:
+Die RTSP-Quellen liegen weiterhin in `config/go2rtc.yaml`:
 
 ```yaml
 streams:
@@ -94,6 +116,7 @@ Bestehende Trigger bleiben erhalten:
 Neue Hilfsendpunkte:
 
 - `/api/ui_state`
+- `/api/settings`
 - `/api/actions/:id`
 - `/go2rtc/*` als lokaler Reverse Proxy zur nativen go2rtc-Instanz
 

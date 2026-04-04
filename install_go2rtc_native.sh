@@ -88,6 +88,11 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 
+sudo tee /etc/sudoers.d/unifi-doorbell-monitor-go2rtc >/dev/null <<EOF
+${INSTALL_USER} ALL=(root) NOPASSWD: /bin/systemctl restart go2rtc, /bin/systemctl status go2rtc, /usr/bin/systemctl restart go2rtc, /usr/bin/systemctl status go2rtc
+EOF
+sudo chmod 440 /etc/sudoers.d/unifi-doorbell-monitor-go2rtc
+
 sudo systemctl daemon-reload
 sudo systemctl enable --now go2rtc
 
