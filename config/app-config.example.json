@@ -27,13 +27,13 @@
       "id": "open-gate",
       "label": "Gartentor öffnen",
       "method": "GET",
-      "url": "http://192.168.1.2:8087/set/openknx.0.Verbraucher.Garten_Garage.Gartentuere(Schalten)?value=true"
+      "url": "http://192.168.1.2:8087/set/openknx.0.Verbraucher.Garten_Garage.Gartentüre(Schalten)?value=true"
     },
     {
       "id": "open-door",
       "label": "Eingangstür öffnen",
       "method": "GET",
-      "url": "http://192.168.1.2:8087/set/openknx.0.Verbraucher.Erdgeschoss.1_Vorraum-Tueroeffner(Schalten)?value=true"
+      "url": "http://192.168.1.2:8087/set/openknx.0.Verbraucher.Erdgeschoss.1_Vorraum-Türöffner(Schalten)?value=true"
     }
   ]
 }

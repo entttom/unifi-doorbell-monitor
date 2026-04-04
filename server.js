@@ -60,13 +60,13 @@ const DEFAULT_APP_CONFIG = {
       id: 'open-gate',
       label: 'Gartentor öffnen',
       method: 'GET',
-      url: 'http://192.168.1.2:8087/set/openknx.0.Verbraucher.Garten_Garage.Gartentuere(Schalten)?value=true',
+      url: 'http://192.168.1.2:8087/set/openknx.0.Verbraucher.Garten_Garage.Gartentüre(Schalten)?value=true',
     },
     {
       id: 'open-door',
       label: 'Eingangstür öffnen',
       method: 'GET',
-      url: 'http://192.168.1.2:8087/set/openknx.0.Verbraucher.Erdgeschoss.1_Vorraum-Tueroeffner(Schalten)?value=true',
+      url: 'http://192.168.1.2:8087/set/openknx.0.Verbraucher.Erdgeschoss.1_Vorraum-Türöffner(Schalten)?value=true',
     },
   ],
 };
@@ -567,6 +567,9 @@ function activateStreamMode(mode, source) {
     ringSession = true;
   } else if (source === 'switch_camera') {
     ringSession = Boolean(prevRingSession);
+  } else if (source === 'debug_preview') {
+    // Wie nach Klingeln: Kamerawechsel-Button in stream.html testbar (/api/preview_stream_ui).
+    ringSession = true;
   } else if (source === 'front_yard' && mode === 'front_yard_after_ring') {
     ringSession = true;
   } else if (source === 'front_yard' && mode === 'front_yard') {
