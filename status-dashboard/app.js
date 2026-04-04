@@ -1,4 +1,8 @@
 const CONFIG = {
+  /** Nutzbare Netto-Speicherkapazität (kWh) für grobe Restzeit neben „Batterie“. Anlage anpassen. */
+  batteryUsableKwh: 12.8,
+  /** Unterer SOC, bis zu dem entladen wird (Restzeit „bis leer“ und Füllbalken bis hier = 0 %). */
+  batteryMinSocPercent: 7,
   weather: {
     latitude: 48.2082,
     longitude: 16.3738,
@@ -79,13 +83,13 @@ const elements = {
   weatherWind: document.getElementById("weather-wind"),
   weatherDays: document.getElementById("weather-days"),
   batteryChip: document.getElementById("battery-chip"),
+  batteryEta: document.getElementById("battery-eta"),
   energyStatus: document.getElementById("energy-status"),
   energyPv: document.getElementById("energy-pv"),
   energyLoad: document.getElementById("energy-load"),
   energyGrid: document.getElementById("energy-grid"),
   energyBatteryPower: document.getElementById("energy-battery-power"),
   energySoc: document.getElementById("energy-soc"),
-  heatingChip: document.getElementById("heating-chip"),
   heatingState: document.getElementById("heating-state"),
   frontYardButton: document.getElementById("front-yard-button"),
   settingsButton: document.getElementById("settings-button"),
@@ -704,6 +708,7 @@ function renderEnergy(data) {
   elements.energyBatteryPower.textContent = formatBatteryPower(batteryPower);
   elements.energySoc.textContent = Number.isFinite(soc) ? `${Math.round(soc)} %` : "--";
   updateBatteryFill(soc);
+  updateBatteryEta(soc, batteryPower);
 
   elements.energyGrid.textContent = formatGridPower(gridPower);
   elements.energyGrid.classList.remove("positive", "negative", "neutral");
@@ -720,8 +725,6 @@ function renderEnergy(data) {
     (Number.isFinite(heatingPower) && heatingPower !== 0) ||
     (Number.isFinite(outputFreq) && outputFreq === 36);
   elements.heatingState.textContent = heatingOn ? "läuft" : "aus";
-  elements.heatingChip.classList.remove("heating-on", "heating-off");
-  elements.heatingChip.classList.add(heatingOn ? "heating-on" : "heating-off");
 }
 
 function renderEnergyFallback() {
@@ -733,8 +736,8 @@ function renderEnergyFallback() {
   elements.energyGrid.classList.add("neutral");
   elements.energySoc.textContent = "--";
   updateBatteryFill(Number.NaN);
+  updateBatteryEta(Number.NaN, Number.NaN);
   elements.heatingState.textContent = "--";
-  elements.heatingChip.classList.remove("heating-on", "heating-off");
 }
 
 function updateBatteryFill(soc) {
@@ -745,9 +748,104 @@ function updateBatteryFill(soc) {
     return;
   }
 
-  const percent = Math.max(0, Math.min(100, soc));
-  // CSS erwartet den Wert als Prozentsatz für die Breite.
+  const minSoc = CONFIG.batteryMinSocPercent;
+  const usableSpan = Math.max(1, 100 - minSoc);
+  const percent = Math.max(
+    0,
+    Math.min(100, ((soc - minSoc) / usableSpan) * 100)
+  );
   elements.batteryChip.style.setProperty("--soc-fill", `${percent}%`);
+}
+
+/** Grobe Restzeit aus SOC, P_Akku und nutzbarer Kapazität (Konstante CONFIG.batteryUsableKwh). */
+function updateBatteryEta(soc, powerW) {
+  if (!elements.batteryEta) {
+    return;
+  }
+
+  const { line, title } = formatBatteryEta(
+    soc,
+    powerW,
+    CONFIG.batteryUsableKwh,
+    CONFIG.batteryMinSocPercent
+  );
+  elements.batteryEta.textContent = line;
+  elements.batteryEta.title = title;
+}
+
+function formatBatteryEta(soc, powerW, capacityKwh, minSocPercent) {
+  const minPowerW = 40;
+  const minSoc = Number.isFinite(minSocPercent) ? Math.max(0, Math.min(50, minSocPercent)) : 0;
+
+  if (!Number.isFinite(capacityKwh) || capacityKwh <= 0) {
+    return {
+      line: "–",
+      title: "Trage batteryUsableKwh in app.js ein (nutzbare kWh), um die Restzeit zu schätzen.",
+    };
+  }
+
+  if (!Number.isFinite(soc) || !Number.isFinite(powerW)) {
+    return { line: "–", title: "" };
+  }
+
+  if (Math.abs(powerW) < minPowerW) {
+    return {
+      line: "–",
+      title: "Lade-/Entladestrom zu gering – keine sinnvolle Restzeit.",
+    };
+  }
+
+  let seconds;
+  let label;
+
+  if (powerW > 0) {
+    label = "bis leer";
+    if (soc <= minSoc + 0.5) {
+      return {
+        line: "–",
+        title: `SOC am unteren Stützpunkt (ca. ${minSoc} %).`,
+      };
+    }
+    const usableSocFraction = Math.max(0, (soc - minSoc) / 100);
+    const remainingWh = usableSocFraction * capacityKwh * 1000;
+    seconds = (remainingWh / powerW) * 3600;
+  } else {
+    label = "bis voll";
+    if (soc >= 99.5) {
+      return { line: "–", title: "Voll (SOC nahe 100 %)." };
+    }
+    const toFillWh = ((100 - soc) / 100) * capacityKwh * 1000;
+    seconds = (toFillWh / Math.abs(powerW)) * 3600;
+  }
+
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return { line: "–", title: "" };
+  }
+
+  const line = `${label} · ${formatEtaDuration(seconds)}`;
+  const hoursRough = seconds / 3600;
+  const detail =
+    powerW > 0
+      ? `Bei ca. ${Math.round(Math.abs(powerW))} W Entnahme: Restkapazität grob ${hoursRough.toFixed(1)} h.`
+      : `Bei ca. ${Math.round(Math.abs(powerW))} W Ladeleistung: Rest grob ${hoursRough.toFixed(1)} h.`;
+
+  return {
+    line,
+    title: `${detail} Schätzung aus SOC und P_Akku; ${capacityKwh} kWh nutzbar, Entlade-Untergrenze ${minSoc} % (app.js).`,
+  };
+}
+
+function formatEtaDuration(secondsIn) {
+  const seconds = Math.max(0, secondsIn);
+  const totalMinutes = Math.max(1, Math.round(seconds / 60));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours <= 0) {
+    return `${minutes}min`;
+  }
+
+  return `${hours}h:${minutes}min`;
 }
 
 async function triggerFrontYard() {

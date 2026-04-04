@@ -552,6 +552,23 @@ h2 {
   text-align: left;
 }
 
+.chip-value-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+
+.chip-eta {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
 #battery-chip {
   position: relative;
   overflow: hidden;
@@ -572,16 +589,6 @@ h2 {
 #battery-chip > * {
   position: relative;
   z-index: 1;
-}
-
-.metric-card-inline.heating-on {
-  background: var(--warning-soft);
-  border-color: #e4c088;
-}
-
-.metric-card-inline.heating-off {
-  background: var(--accent-soft);
-  border-color: #bed8c8;
 }
 
 .chip-label {
