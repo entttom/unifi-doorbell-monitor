@@ -1,14 +1,14 @@
 # UniFi Doorbell Monitor
 
-Dieses Projekt zeigt ein Haus-Dashboard im Firefox-Kiosk und blendet bei Klingeln oder manuellen Triggern einen UniFi-RTSP-Stream in der Weboberflaeche ein. Der aktuelle Standardpfad nutzt `go2rtc` als nativen Streaming-Gateway auf dem Raspberry Pi.
+Dieses Projekt zeigt ein Haus-Dashboard im Firefox-Kiosk und blendet bei Klingeln oder manuellen Triggern einen UniFi-RTSP-Stream in der Weboberfläche ein. Der aktuelle Standardpfad nutzt `go2rtc` als nativen Streaming-Gateway auf dem Raspberry Pi.
 
 ## Architektur
 
 - Node/Express liefert Dashboard, API und Kiosk-Steuerung.
 - Firefox bleibt im Kiosk auf `/status/`.
-- `go2rtc` liest die RTSP-Streams und liefert sie browserfaehig per WebRTC aus.
-- Die Stream-Ansicht laeuft als eigene Seite innerhalb der Weboberflaeche, nicht mehr als separates Python-Fenster.
-- Streams, Kalender-URL und Aktionsbuttons koennen direkt ueber die Weboberflaeche bearbeitet werden.
+- `go2rtc` liest die RTSP-Streams und liefert sie browserfähig per WebRTC aus.
+- Die Stream-Ansicht läuft als eigene Seite innerhalb der Weboberfläche, nicht mehr als separates Python-Fenster.
+- Streams, Kalender-URL und Aktionsbuttons können direkt über die Weboberfläche bearbeitet werden.
 
 ## Installation auf Raspberry Pi
 
@@ -27,18 +27,18 @@ chmod +x install_go2rtc_native.sh
 Das Skript:
 
 - installiert Node.js, npm, PM2, Firefox ESR und `wmctrl`
-- laedt `go2rtc` als Binary nach `/usr/local/bin/go2rtc`
+- lädt `go2rtc` als Binary nach `/usr/local/bin/go2rtc`
 - erzeugt bei Bedarf:
   - `config/go2rtc.yaml`
   - `config/app-config.json`
   - `status-dashboard/config/calendar-url.txt`
 - registriert `go2rtc` als `systemd`-Dienst
-- hinterlegt einen gezielten `sudoers`-Eintrag, damit die Weboberflaeche `go2rtc` nach Konfigurationsaenderungen neu starten kann
-- startet die Node-App ueber PM2
+- hinterlegt einen gezielten `sudoers`-Eintrag, damit die Weboberfläche `go2rtc` nach Konfigurationsänderungen neu starten kann
+- startet die Node-App über PM2
 
 ## Wichtige Dateien
 
-- `start_with_button_on_side.js`
+- `server.js`
   Zentrale API, Monitor-Steuerung, go2rtc-Proxy, UI-State
 - `config/go2rtc.yaml`
   Lokale go2rtc-Konfiguration mit den RTSP-Quellen
@@ -49,19 +49,19 @@ Das Skript:
 - `status-dashboard/stream.html`
   Dedizierte Stream-Seite
 - `status-dashboard/settings.html`
-  Einstellungen fuer Streams, Kalender und Aktionsbuttons
+  Einstellungen für Streams, Kalender und Aktionsbuttons
 
 ## Konfiguration
 
-### Weboberflaeche
+### Weboberfläche
 
-Die Konfiguration ist unter `/status/settings.html` erreichbar. Dort lassen sich aendern:
+Die Konfiguration ist unter `/status/settings.html` erreichbar. Dort lassen sich ändern:
 
 - Kalender-URL
 - Doorbell- und Frontyard-RTSP-URL
 - go2rtc Listen-Adressen
 - Stream-Titel
-- URLs und Labels fuer Gartentor und Eingangstuer
+- URLs und Labels für Gartentor und Eingangstür
 
 Beim Speichern schreibt die Node-App:
 
@@ -85,14 +85,14 @@ streams:
 
 ### Aktionsbuttons
 
-Die Buttons fuer Gartentor und Eingangstuer werden ueber `config/app-config.json` gesteuert:
+Die Buttons für Gartentor und Eingangstür werden über `config/app-config.json` gesteuert:
 
 ```json
 {
   "actions": [
     {
       "id": "open-gate",
-      "label": "Gartentor oeffnen",
+      "label": "Gartentor öffnen",
       "method": "GET",
       "url": "http://..."
     }
@@ -124,7 +124,7 @@ Neue Hilfsendpunkte:
 
 ### go2rtc
 
-`go2rtc` startet automatisch beim Systemstart ueber `systemd`:
+`go2rtc` startet automatisch beim Systemstart über `systemd`:
 
 ```bash
 systemctl status go2rtc
@@ -133,7 +133,7 @@ journalctl -u go2rtc -f
 
 ### Node/Kiosk
 
-Die Web-App laeuft ueber PM2:
+Die Web-App läuft über PM2:
 
 ```bash
 pm2 status
@@ -143,6 +143,6 @@ pm2 restart unifi-doorbell-monitor
 
 ## Hinweise
 
-- `go2rtc` lauscht in der Beispielkonfiguration lokal auf `127.0.0.1:1984`; die Web-App bindet es ueber `/go2rtc/` ein.
-- Fuer stabile WebRTC-Nutzung im LAN kann Port `8555` relevant sein.
+- `go2rtc` lauscht in der Beispielkonfiguration lokal auf `127.0.0.1:1984`; die Web-App bindet es über `/go2rtc/` ein.
+- Für stabile WebRTC-Nutzung im LAN kann Port `8555` relevant sein.
 - Die alten Python/GStreamer-Dateien bleiben im Repository, sind aber nicht mehr der Standardpfad.

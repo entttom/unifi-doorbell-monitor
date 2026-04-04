@@ -2,25 +2,51 @@ const STREAM_ENDPOINTS = {
   uiState: "/api/ui_state",
   close: "/api/kill_stream_window",
   actionBase: "/api/actions/",
+  switchCamera: "/api/switch_stream_camera",
 };
 
 const elements = {
-  title: document.getElementById("stream-title"),
   actionsTitle: document.getElementById("stream-actions-title"),
-  countdown: document.getElementById("stream-countdown"),
   statusNote: document.getElementById("stream-status-note"),
-  closeButton: document.getElementById("stream-close-button"),
-  settingsButton: document.getElementById("stream-settings-button"),
   frame: document.getElementById("stream-frame"),
+  frameWrap: document.getElementById("stream-frame-wrap"),
   actionsList: document.getElementById("stream-actions-list"),
+  actionsPanel: document.getElementById("stream-actions-panel"),
+  cameraSwitchWrap: document.getElementById("stream-camera-switch-wrap"),
+  cameraSwitchButton: document.getElementById("stream-camera-switch-button"),
 };
+
+let closingStream = false;
 
 let uiStateInterval = 0;
 let currentPlayerUrl = "";
+let lastDashboardPath = "/status/";
 
 function init() {
-  elements.closeButton.addEventListener("click", closeStream);
-  elements.settingsButton.addEventListener("click", openSettings);
+  if (elements.frameWrap) {
+    elements.frameWrap.addEventListener("click", () => {
+      void closeStream();
+    });
+    elements.frameWrap.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        void closeStream();
+      }
+    });
+  }
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      void closeStream();
+    }
+  });
+  if (elements.cameraSwitchButton) {
+    elements.cameraSwitchButton.addEventListener("click", () => {
+      const mode = elements.cameraSwitchButton.dataset.mode;
+      if (mode) {
+        void switchCameraMode(mode);
+      }
+    });
+  }
   void loadUiState();
   uiStateInterval = window.setInterval(loadUiState, 1000);
 }
@@ -51,41 +77,67 @@ async function loadUiState() {
 }
 
 function renderState(state, dashboardPath) {
-  elements.title.textContent = state.title || "Live-Stream";
+  lastDashboardPath = dashboardPath || lastDashboardPath;
+  document.title = state.title ? `${state.title} · Stream` : "Stream";
   elements.actionsTitle.textContent = state.showActions ? "Steuerung" : "Nur Ansicht";
   elements.statusNote.textContent = state.source || "live";
-  updateCountdown(state.endsAt, dashboardPath);
+  updateCountdown(state.endsAt, lastDashboardPath);
 
   if (state.playerUrl && state.playerUrl !== currentPlayerUrl) {
     currentPlayerUrl = state.playerUrl;
     elements.frame.src = currentPlayerUrl;
   }
 
-  renderActions(state.actions || []);
+  const actions = state.actions || [];
+  const cameraSwitch = state.cameraSwitch || null;
+  renderActions(actions, Boolean(cameraSwitch));
+
+  if (cameraSwitch && elements.cameraSwitchWrap && elements.cameraSwitchButton) {
+    elements.cameraSwitchWrap.hidden = false;
+    elements.cameraSwitchButton.textContent = cameraSwitch.label;
+    elements.cameraSwitchButton.dataset.mode = cameraSwitch.mode;
+  } else if (elements.cameraSwitchWrap) {
+    elements.cameraSwitchWrap.hidden = true;
+    if (elements.cameraSwitchButton) {
+      delete elements.cameraSwitchButton.dataset.mode;
+    }
+  }
+
+  setActionsSidebarCollapsed(actions.length === 0 && !cameraSwitch);
+}
+
+function setActionsSidebarCollapsed(collapsed) {
+  document.body.classList.toggle("stream-page--no-actions", collapsed);
+  if (elements.actionsPanel) {
+    elements.actionsPanel.hidden = collapsed;
+    elements.actionsPanel.setAttribute("aria-hidden", collapsed ? "true" : "false");
+  }
 }
 
 function updateCountdown(endsAt, dashboardPath) {
   if (!endsAt) {
-    elements.countdown.textContent = "Offen";
     return;
   }
 
   const remainingMs = Math.max(0, endsAt - Date.now());
   const remainingSeconds = Math.ceil(remainingMs / 1000);
-  elements.countdown.textContent = `Noch ${remainingSeconds}s`;
 
   if (remainingSeconds <= 0) {
     window.location.replace(dashboardPath);
   }
 }
 
-function renderActions(actions) {
+function renderActions(actions, hasCameraSwitch) {
   if (!actions.length) {
-    elements.actionsList.innerHTML = `
+    if (hasCameraSwitch) {
+      elements.actionsList.innerHTML = "";
+    } else {
+      elements.actionsList.innerHTML = `
       <div class="empty-state">
-        <p>Keine Aktionen fuer diesen Stream.</p>
+        <p>Keine Aktionen für diesen Stream.</p>
       </div>
     `;
+    }
     return;
   }
 
@@ -118,7 +170,7 @@ async function triggerAction(actionId, button) {
       throw new Error(`Aktion fehlgeschlagen (${response.status})`);
     }
 
-    elements.statusNote.textContent = "Aktion ausgefuehrt";
+    elements.statusNote.textContent = "Aktion ausgeführt";
   } catch (error) {
     console.error(error);
     elements.statusNote.textContent = "Aktion fehlgeschlagen";
@@ -129,8 +181,42 @@ async function triggerAction(actionId, button) {
   }
 }
 
+async function switchCameraMode(mode) {
+  if (elements.cameraSwitchButton) {
+    elements.cameraSwitchButton.disabled = true;
+  }
+  elements.statusNote.textContent = "Wechsle Kamera …";
+  try {
+    const response = await fetch(STREAM_ENDPOINTS.switchCamera, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new Error("Wechsel fehlgeschlagen");
+    }
+    const data = await response.json();
+    if (data.ui_state) {
+      renderState(data.ui_state, lastDashboardPath);
+    } else {
+      void loadUiState();
+    }
+  } catch (error) {
+    console.error(error);
+    elements.statusNote.textContent = "Kamerawechsel fehlgeschlagen";
+  } finally {
+    if (elements.cameraSwitchButton) {
+      elements.cameraSwitchButton.disabled = false;
+    }
+  }
+}
+
 async function closeStream() {
-  elements.closeButton.disabled = true;
+  if (closingStream) {
+    return;
+  }
+  closingStream = true;
 
   try {
     await fetch(STREAM_ENDPOINTS.close, {
@@ -140,10 +226,6 @@ async function closeStream() {
   } finally {
     window.location.replace("/status/");
   }
-}
-
-function openSettings() {
-  window.location.assign("/status/settings.html");
 }
 
 function escapeHtml(value) {

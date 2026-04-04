@@ -1,4 +1,4 @@
 https://calendar.google.com/calendar/ical/example/private-abcdef/basic.ics
 
 Kopiere diese Datei nach calendar-url.txt (eine Zeile mit der ICS-URL).
-Der Express-Server (start_with_button_on_side.js) liest calendar-url.txt und liefert /api/calendar.
+Der Express-Server (server.js) liest calendar-url.txt und liefert /api/calendar.

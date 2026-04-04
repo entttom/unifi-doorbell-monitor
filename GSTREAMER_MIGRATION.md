@@ -203,7 +203,7 @@ Falls Probleme auftreten, kannst du jederzeit zu VLC zurückwechseln:
 cp backup_vlc/*.py .
 
 # 2. Ursprünglichen Node.js-Server verwenden
-node start_with_button_on_side.js
+node server.js
 
 # ODER in GStreamer-Version VLC aktivieren:
 # In start_with_button_on_side_gstreamer.js:

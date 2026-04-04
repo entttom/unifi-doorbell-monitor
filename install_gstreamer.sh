@@ -121,7 +121,7 @@ pm2 startup systemd -u pi --hp /home/pi 2>&1 | grep "sudo env"
 
 echo ""
 echo "Starte UniFi Doorbell Monitor mit PM2..."
-DISPLAY=:0 pm2 start start_with_button_on_side.js --name "unifi-doorbell-monitor"
+DISPLAY=:0 pm2 start server.js --name "unifi-doorbell-monitor"
 pm2 save
 
 echo ""

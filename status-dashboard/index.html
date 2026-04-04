@@ -29,9 +29,18 @@
       <section class="sidebar">
         <section class="panel panel-clock">
           <div class="clock-row">
-            <div>
+            <span class="clock-row-spacer" aria-hidden="true"></span>
+            <div class="clock-row-center">
               <div class="clock-time" id="clock-time">--:--</div>
               <div class="clock-date" id="clock-date">--</div>
+            </div>
+            <div class="clock-row-actions">
+              <button class="clock-settings-btn" id="settings-button" type="button" aria-label="Einstellungen" title="Einstellungen">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/>
+                  <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+                </svg>
+              </button>
             </div>
           </div>
         </section>
@@ -98,9 +107,6 @@
         <section class="panel panel-actions">
           <button class="action-button" id="front-yard-button" type="button">
             Vorgarten anzeigen
-          </button>
-          <button class="action-button action-button-secondary" id="settings-button" type="button">
-            Einstellungen
           </button>
         </section>
       </section>

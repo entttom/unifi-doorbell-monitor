@@ -48,7 +48,7 @@ case "$ARCH" in
     GO2RTC_ASSET="go2rtc_linux_amd64"
     ;;
   *)
-    echo "Nicht unterstuetzte Architektur: $ARCH"
+    echo "Nicht unterstützte Architektur: $ARCH"
     exit 1
     ;;
 esac
@@ -63,7 +63,7 @@ fi
 
 GO2RTC_BIN_URL="https://github.com/AlexxIT/go2rtc/releases/download/${GO2RTC_VERSION}/${GO2RTC_ASSET}"
 
-echo "Installiere go2rtc ${GO2RTC_VERSION} fuer ${ARCH} ..."
+echo "Installiere go2rtc ${GO2RTC_VERSION} für ${ARCH} ..."
 curl -fsSL "$GO2RTC_BIN_URL" -o /tmp/go2rtc
 chmod +x /tmp/go2rtc
 sudo install -m 0755 /tmp/go2rtc /usr/local/bin/go2rtc
@@ -102,7 +102,7 @@ npm install
 if pm2 describe unifi-doorbell-monitor >/dev/null 2>&1; then
   DISPLAY=:0 pm2 restart unifi-doorbell-monitor --update-env
 else
-  DISPLAY=:0 pm2 start start_with_button_on_side.js --name unifi-doorbell-monitor
+  DISPLAY=:0 pm2 start server.js --name unifi-doorbell-monitor
 fi
 
 pm2 save
@@ -124,6 +124,6 @@ echo ""
 echo "Node/PM2 Status:"
 pm2 status || true
 echo ""
-echo "Weboberflaeche: http://$(hostname -I | awk '{print $1}'):3000/status/"
+echo "Weboberfläche: http://$(hostname -I | awk '{print $1}'):3000/status/"
 echo "API Debug:      http://$(hostname -I | awk '{print $1}'):3000/api/debug"
 echo "go2rtc intern:  http://127.0.0.1:1984/"

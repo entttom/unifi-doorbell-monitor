@@ -15,6 +15,9 @@ const server = http.createServer(app);
 const port = Number(process.env.PORT || 3000);
 const GO2RTC_HTTP_PORT = Number(process.env.GO2RTC_HTTP_PORT || 1984);
 const GO2RTC_HOST = process.env.GO2RTC_HOST || '127.0.0.1';
+const WAYLAND_DISPLAY = process.env.WAYLAND_DISPLAY || 'wayland-0';
+const XDG_RUNTIME_DIR_WLR =
+  process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid()}`;
 const MONITOR_TIMEOUT_MS = 300000;
 const STREAM_TIMEOUT_MS = 300000;
 
@@ -37,7 +40,7 @@ const DEFAULT_APP_CONFIG = {
     streamModes: {
       main: {
         streamKey: 'doorbell',
-        title: 'Haustuer',
+        title: 'Haustür',
         showActions: true,
       },
       front_yard: {
@@ -55,13 +58,13 @@ const DEFAULT_APP_CONFIG = {
   actions: [
     {
       id: 'open-gate',
-      label: 'Gartentor oeffnen',
+      label: 'Gartentor öffnen',
       method: 'GET',
       url: 'http://192.168.1.2:8087/set/openknx.0.Verbraucher.Garten_Garage.Gartentuere(Schalten)?value=true',
     },
     {
       id: 'open-door',
-      label: 'Eingangstuere oeffnen',
+      label: 'Eingangstür öffnen',
       method: 'GET',
       url: 'http://192.168.1.2:8087/set/openknx.0.Verbraucher.Erdgeschoss.1_Vorraum-Tueroeffner(Schalten)?value=true',
     },
@@ -100,7 +103,12 @@ server.on('upgrade', (req, socket, head) => {
     for (let index = 0; index < req.rawHeaders.length; index += 2) {
       const headerName = req.rawHeaders[index];
       const headerValue = req.rawHeaders[index + 1];
-      if (headerName.toLowerCase() === 'host') {
+      const lower = headerName.toLowerCase();
+      if (lower === 'host') {
+        continue;
+      }
+      // Browser-Origin (z. B. http://Display-IP:3000) != go2rtc Host 127.0.0.1:1984 → sonst 403 am WS.
+      if (lower === 'origin') {
         continue;
       }
       headerLines.push(`${headerName}: ${headerValue}`);
@@ -134,6 +142,7 @@ function createDefaultUiState() {
     source: null,
     activatedAt: null,
     endsAt: null,
+    ringSession: false,
   };
 }
 
@@ -168,7 +177,7 @@ function loadAppConfig() {
   return {
     ui: mergedUi,
     actions:
-      loadedConfig && Array.isArray(loadedConfig.actions) && loadedConfig.actions.length > 0
+      loadedConfig && Array.isArray(loadedConfig.actions)
         ? loadedConfig.actions
         : DEFAULT_APP_CONFIG.actions,
   };
@@ -441,7 +450,7 @@ function validateSettingsInput(rawInput) {
       ),
     },
     ui: {
-      mainTitle: normalizeText(rawInput && rawInput.ui ? rawInput.ui.mainTitle : '', 'Haustuer'),
+      mainTitle: normalizeText(rawInput && rawInput.ui ? rawInput.ui.mainTitle : '', 'Haustür'),
       frontYardTitle: normalizeText(
         rawInput && rawInput.ui ? rawInput.ui.frontYardTitle : '',
         'Vorgarten'
@@ -457,7 +466,7 @@ function validateSettingsInput(rawInput) {
           rawInput && rawInput.actions && rawInput.actions.openGate
             ? rawInput.actions.openGate.label
             : '',
-          'Gartentor oeffnen'
+          'Gartentor öffnen'
         ),
         url: gateUrl,
       },
@@ -466,7 +475,7 @@ function validateSettingsInput(rawInput) {
           rawInput && rawInput.actions && rawInput.actions.openDoor
             ? rawInput.actions.openDoor.label
             : '',
-          'Eingangstuere oeffnen'
+          'Eingangstür öffnen'
         ),
         url: doorUrl,
       },
@@ -552,6 +561,18 @@ function clearStreamState() {
 function activateStreamMode(mode, source) {
   const modeConfig = getUiMode(mode);
   const activatedAt = Date.now();
+  const prevRingSession = uiState && uiState.active ? uiState.ringSession : false;
+  let ringSession = false;
+  if (source === 'ring_ring') {
+    ringSession = true;
+  } else if (source === 'switch_camera') {
+    ringSession = Boolean(prevRingSession);
+  } else if (source === 'front_yard' && mode === 'front_yard_after_ring') {
+    ringSession = true;
+  } else if (source === 'front_yard' && mode === 'front_yard') {
+    ringSession = false;
+  }
+
   uiState = {
     active: true,
     mode,
@@ -561,6 +582,7 @@ function activateStreamMode(mode, source) {
     source,
     activatedAt,
     endsAt: activatedAt + STREAM_TIMEOUT_MS,
+    ringSession,
   };
   updateLegacyStreamFlags();
   resetStreamTimer();
@@ -579,7 +601,31 @@ function getPlayerUrl(streamKey) {
   return `${basePath}/stream.html?src=${encodeURIComponent(streamKey)}&mode=webrtc`;
 }
 
+function getAlternateCameraInfo(currentMode) {
+  if (currentMode === 'main') {
+    const target = getUiMode('front_yard');
+    return {
+      mode: 'front_yard',
+      label: `Zu ${target.title} wechseln`,
+    };
+  }
+  if (currentMode === 'front_yard' || currentMode === 'front_yard_after_ring') {
+    const target = getUiMode('main');
+    return {
+      mode: 'main',
+      label: `Zu ${target.title} wechseln`,
+    };
+  }
+  return null;
+}
+
 function buildUiStatePayload() {
+  const { ringSession, ...uiStateRest } = uiState;
+  const cameraSwitch =
+    uiState.active && ringSession && uiState.mode
+      ? getAlternateCameraInfo(uiState.mode)
+      : null;
+
   return {
     backend: 'go2rtc',
     dashboardPath: appConfig.ui.dashboardPath,
@@ -590,19 +636,24 @@ function buildUiStatePayload() {
     stream,
     stream_front_door,
     ui_state: {
-      ...uiState,
+      ...uiStateRest,
       playerUrl: uiState.streamKey ? getPlayerUrl(uiState.streamKey) : null,
       actions: uiState.active && uiState.showActions ? getConfiguredActions() : [],
+      cameraSwitch,
     },
   };
 }
 
+function wlrRandrEnvPrefix() {
+  return `XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR_WLR}" WAYLAND_DISPLAY="${WAYLAND_DISPLAY}"`;
+}
+
 function turnMonitorOnCommand(callback) {
-  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on', callback);
+  exec(`${wlrRandrEnvPrefix()} wlr-randr --output HDMI-A-1 --on`, callback);
 }
 
 function turnMonitorOffCommand(callback) {
-  exec('WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off', callback);
+  exec(`${wlrRandrEnvPrefix()} wlr-randr --output HDMI-A-1 --off`, callback);
 }
 
 function fetchText(urlString, timeoutMs) {
@@ -751,7 +802,7 @@ function proxyGo2RtcHttp(req, res) {
 
 function getMonitorStatus() {
   return new Promise((resolve) => {
-    exec('WAYLAND_DISPLAY="wayland-1" wlr-randr', (error, stdout) => {
+    exec(`${wlrRandrEnvPrefix()} wlr-randr`, (error, stdout) => {
       if (error || !stdout) {
         resolve({
           actualMonitorStatus: 'unknown',
@@ -1012,6 +1063,32 @@ app.get('/api/kill_stream_window', (req, res) => {
   sendJsonOk(res, { backend: 'go2rtc' });
 });
 
+app.post('/api/switch_stream_camera', (req, res) => {
+  const mode =
+    req.body && typeof req.body.mode === 'string' ? req.body.mode.trim() : '';
+  if (!uiState.active) {
+    res.status(400).json({ ok: false, message: 'Kein aktiver Stream' });
+    return;
+  }
+  if (!uiState.ringSession) {
+    res.status(403).json({ ok: false, message: 'Kamerawechsel nur nach Klingeln' });
+    return;
+  }
+  if (
+    !mode ||
+    !appConfig.ui.streamModes ||
+    !Object.prototype.hasOwnProperty.call(appConfig.ui.streamModes, mode)
+  ) {
+    res.status(400).json({ ok: false, message: 'Ungültiger Modus' });
+    return;
+  }
+  activateStreamMode(mode, 'switch_camera');
+  sendJsonOk(res, {
+    backend: 'go2rtc',
+    ui_state: buildUiStatePayload().ui_state,
+  });
+});
+
 app.get('/api/open_stream_window', (req, res) => {
   if (stream) {
     res.status(200).json({ Status: 'Already Running' });
@@ -1034,6 +1111,15 @@ app.get('/api/open_stream_window_front_yard', (req, res) => {
     activateStreamMode('front_yard', 'open_stream_window_front_yard');
     sendJsonOk(res, { backend: 'go2rtc' });
   });
+});
+
+// Layout-Debug: aktiviert ui_state und leitet zur Stream-Seite (ohne ensureMonitorOn).
+app.get('/api/preview_stream_ui', (req, res) => {
+  const raw = typeof req.query.mode === 'string' ? req.query.mode.trim() : '';
+  const mode =
+    raw === 'front_yard' || raw === 'front_yard_after_ring' ? raw : 'main';
+  activateStreamMode(mode, 'debug_preview');
+  res.redirect(302, appConfig.ui.streamPath || '/status/stream.html');
 });
 
 app.get('/api/switch_backend/:backend', (req, res) => {
@@ -1130,7 +1216,7 @@ app.get('/api/debug', async (req, res) => {
       go2rtc: go2rtcStatus,
     },
     monitor_details: {
-      command_used: 'WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1',
+      command_used: `${wlrRandrEnvPrefix()} wlr-randr --output HDMI-A-1`,
       wlr_randr_output: monitorStatus.rawOutput,
     },
   });
@@ -1165,7 +1251,7 @@ app.get('/api/debug/hard_monitor_reset', async (req, res) => {
   debugLog.push(`[${new Date().toISOString()}] Starte Hard Monitor Reset`);
 
   const offResult = await runCommand(
-    'WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --off'
+    `${wlrRandrEnvPrefix()} wlr-randr --output HDMI-A-1 --off`
   );
   debugLog.push(
     `[${new Date().toISOString()}] Monitor OFF: ${offResult.ok ? 'OK' : offResult.error}`
@@ -1176,7 +1262,7 @@ app.get('/api/debug/hard_monitor_reset', async (req, res) => {
   });
 
   const onResult = await runCommand(
-    'WAYLAND_DISPLAY="wayland-1" wlr-randr --output HDMI-A-1 --on'
+    `${wlrRandrEnvPrefix()} wlr-randr --output HDMI-A-1 --on`
   );
   debugLog.push(
     `[${new Date().toISOString()}] Monitor ON: ${onResult.ok ? 'OK' : onResult.error}`
@@ -1197,8 +1283,9 @@ app.get('/api/debug/hard_monitor_reset', async (req, res) => {
 });
 
 app.get('/api/debug/wayland_env', async (req, res) => {
-  const wayland0 = await runCommand('WAYLAND_DISPLAY="wayland-0" wlr-randr --help');
-  const wayland1 = await runCommand('WAYLAND_DISPLAY="wayland-1" wlr-randr --help');
+  const base = `XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR_WLR}"`;
+  const wayland0 = await runCommand(`${base} WAYLAND_DISPLAY="wayland-0" wlr-randr --help`);
+  const wayland1 = await runCommand(`${base} WAYLAND_DISPLAY="wayland-1" wlr-randr --help`);
   const sway = await runCommand('ps aux | grep sway | grep -v grep');
 
   res.status(200).json({
@@ -1220,7 +1307,9 @@ app.get('/api/debug/wayland_env', async (req, res) => {
 
 app.get('/api/debug/fix_wayland', async (req, res) => {
   const debugLog = [];
-  const wayland0 = await runCommand('WAYLAND_DISPLAY="wayland-0" wlr-randr');
+  const wl = (n) =>
+    `XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR_WLR}" WAYLAND_DISPLAY="wayland-${n}" wlr-randr`;
+  const wayland0 = await runCommand(wl(0));
   debugLog.push(`Test wayland-0: ${wayland0.ok ? 'OK' : wayland0.error}`);
 
   if (wayland0.ok && wayland0.stdout.includes('HDMI-A-1')) {
@@ -1228,13 +1317,14 @@ app.get('/api/debug/fix_wayland', async (req, res) => {
       status: 'SUCCESS',
       backend: 'go2rtc',
       working_display: 'wayland-0',
-      recommended_change: 'Aendere die Monitor-Kommandos dauerhaft auf wayland-0.',
+      recommended_change:
+        'Per Umgebungsvariable WAYLAND_DISPLAY=wayland-0 setzen (ist jetzt der Standard).',
       debug_log: debugLog,
     });
     return;
   }
 
-  const wayland1 = await runCommand('WAYLAND_DISPLAY="wayland-1" wlr-randr');
+  const wayland1 = await runCommand(wl(1));
   debugLog.push(`Test wayland-1: ${wayland1.ok ? 'OK' : wayland1.error}`);
 
   if (wayland1.ok && wayland1.stdout.includes('HDMI-A-1')) {
@@ -1252,7 +1342,7 @@ app.get('/api/debug/fix_wayland', async (req, res) => {
     status: 'NO_WORKING_DISPLAY',
     backend: 'go2rtc',
     working_display: null,
-    recommended_change: 'Kein funktionsfaehiges Wayland-Display gefunden.',
+    recommended_change: 'Kein funktionsfähiges Wayland-Display gefunden.',
     debug_log: debugLog,
   });
 });
@@ -1272,12 +1362,12 @@ app.get('/api/debug/auto_fix_timer', (req, res) => {
 
   if (!monitor_on && timer !== null) {
     stopMonitorTimer();
-    fixes.push('Ueberfluessigen Monitor-Timer gestoppt');
+    fixes.push('Überflüssigen Monitor-Timer gestoppt');
   }
 
   if (!uiState.active && timer_stream !== null) {
     stopStreamTimer();
-    fixes.push('Ueberfluessigen Stream-Timer gestoppt');
+    fixes.push('Überflüssigen Stream-Timer gestoppt');
   }
 
   res.status(200).json({

@@ -7,7 +7,7 @@
     "streamModes": {
       "main": {
         "streamKey": "doorbell",
-        "title": "Haustuer",
+        "title": "Haustür",
         "showActions": true
       },
       "front_yard": {
@@ -25,13 +25,13 @@
   "actions": [
     {
       "id": "open-gate",
-      "label": "Gartentor oeffnen",
+      "label": "Gartentor öffnen",
       "method": "GET",
       "url": "http://192.168.1.2:8087/set/openknx.0.Verbraucher.Garten_Garage.Gartentuere(Schalten)?value=true"
     },
     {
       "id": "open-door",
-      "label": "Eingangstuere oeffnen",
+      "label": "Eingangstür öffnen",
       "method": "GET",
       "url": "http://192.168.1.2:8087/set/openknx.0.Verbraucher.Erdgeschoss.1_Vorraum-Tueroeffner(Schalten)?value=true"
     }

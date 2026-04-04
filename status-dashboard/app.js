@@ -56,7 +56,7 @@ const WEATHER_CODE_LABELS = {
   71: "Leichter Schnee",
   73: "Schnee",
   75: "Starker Schnee",
-  77: "Schneekoerner",
+  77: "Schneekörner",
   80: "Schauer",
   81: "Schauer",
   82: "Starke Schauer",

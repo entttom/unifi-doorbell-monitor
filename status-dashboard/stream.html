@@ -9,23 +9,14 @@
   <body class="stream-page">
     <main class="stream-shell">
       <section class="stream-panel">
-        <header class="stream-header">
-          <div>
-            <p class="eyebrow">Live</p>
-            <h1 id="stream-title">Stream wird geladen ...</h1>
-          </div>
-          <div class="stream-header-actions">
-            <p class="stream-countdown" id="stream-countdown">--</p>
-            <button class="stream-close-button stream-settings-button" id="stream-settings-button" type="button">
-              Einstellungen
-            </button>
-            <button class="stream-close-button" id="stream-close-button" type="button">
-              Schliessen
-            </button>
-          </div>
-        </header>
-
-        <div class="stream-frame-wrap">
+        <div
+          class="stream-frame-wrap"
+          id="stream-frame-wrap"
+          role="button"
+          tabindex="0"
+          title="Tippen zum Schließen"
+          aria-label="Kamerastream – tippen oder Escape zum Schließen"
+        >
           <iframe
             class="stream-frame"
             id="stream-frame"
@@ -35,7 +26,7 @@
         </div>
       </section>
 
-      <aside class="stream-actions-panel">
+      <aside class="stream-actions-panel" id="stream-actions-panel" aria-labelledby="stream-actions-title">
         <header class="panel-header compact">
           <div>
             <p class="eyebrow">Aktionen</p>
@@ -45,8 +36,13 @@
         </header>
         <div class="stream-actions-list" id="stream-actions-list">
           <div class="empty-state">
-            <p>Keine Aktionen fuer diesen Stream.</p>
+            <p>Keine Aktionen für diesen Stream.</p>
           </div>
+        </div>
+        <div class="stream-camera-switch-wrap" id="stream-camera-switch-wrap" hidden>
+          <button type="button" class="stream-camera-switch-button" id="stream-camera-switch-button">
+            Andere Kamera
+          </button>
         </div>
       </aside>
     </main>
