@@ -824,10 +824,11 @@ function formatBatteryEta(soc, powerW, capacityKwh, minSocPercent) {
 
   const line = `${label} · ${formatEtaDuration(seconds)}`;
   const hoursRough = seconds / 3600;
+  const hoursRounded = Math.round(hoursRough);
   const detail =
     powerW > 0
-      ? `Bei ca. ${Math.round(Math.abs(powerW))} W Entnahme: Restkapazität grob ${hoursRough.toFixed(1)} h.`
-      : `Bei ca. ${Math.round(Math.abs(powerW))} W Ladeleistung: Rest grob ${hoursRough.toFixed(1)} h.`;
+      ? `Bei ca. ${Math.round(Math.abs(powerW))} W Entnahme: Restkapazität grob ${hoursRounded} h.`
+      : `Bei ca. ${Math.round(Math.abs(powerW))} W Ladeleistung: Rest grob ${hoursRounded} h.`;
 
   return {
     line,
@@ -837,15 +838,11 @@ function formatBatteryEta(soc, powerW, capacityKwh, minSocPercent) {
 
 function formatEtaDuration(secondsIn) {
   const seconds = Math.max(0, secondsIn);
-  const totalMinutes = Math.max(1, Math.round(seconds / 60));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-
+  const hours = Math.round(seconds / 3600);
   if (hours <= 0) {
-    return `${minutes}min`;
+    return "<1 h";
   }
-
-  return `${hours}h:${minutes}min`;
+  return `${hours} h`;
 }
 
 async function triggerFrontYard() {
