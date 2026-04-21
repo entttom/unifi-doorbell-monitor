@@ -287,7 +287,7 @@ async function loadGo2RtcSettings() {
   return {
     apiListen: extractGo2RtcValue(apiSection, '  listen', '127.0.0.1:1984'),
     rtspListen: extractGo2RtcValue(rtspSection, '  listen', '127.0.0.1:8554'),
-    webrtcListen: extractGo2RtcValue(webrtcSection, '  listen', ':8555'),
+    webrtcListen: extractGo2RtcValue(webrtcSection, '  listen', '127.0.0.1:8555'),
     doorbellUrl: extractStreamUrl(configText, 'doorbell'),
     frontyardUrl: extractStreamUrl(configText, 'frontyard'),
   };
@@ -347,6 +347,8 @@ function serializeGo2RtcConfig(settings) {
     '',
     'webrtc:',
     `  listen: ${yamlQuote(settings.webrtcListen)}`,
+    '  filters:',
+    '    loopback: true',
     '',
     'preload:',
     '  doorbell: "video"',
@@ -446,7 +448,7 @@ function validateSettingsInput(rawInput) {
       ),
       webrtcListen: normalizeText(
         rawInput && rawInput.streams ? rawInput.streams.webrtcListen : '',
-        ':8555'
+        '127.0.0.1:8555'
       ),
     },
     ui: {
@@ -601,7 +603,9 @@ function getConfiguredActions() {
 
 function getPlayerUrl(streamKey) {
   const basePath = (appConfig.ui.go2rtcBasePath || '/go2rtc').replace(/\/$/, '');
-  return `${basePath}/stream.html?src=${encodeURIComponent(streamKey)}&mode=webrtc`;
+  // MSE über dieselbe WS-Verbindung (TCP via /go2rtc-Proxy) — zuverlässiger am Pi-Kiosk als
+  // WebRTC/UDP auf 127.0.0.1:8555 (ICE/„loading“-Hänger).
+  return `${basePath}/stream.html?src=${encodeURIComponent(streamKey)}&mode=mse`;
 }
 
 function getAlternateCameraInfo(currentMode) {
@@ -837,17 +841,49 @@ function runCommand(command, timeoutMs = 4000) {
   });
 }
 
-async function getGo2RtcStatus() {
+function summarizeGo2RtcStreamsPayload(raw) {
+  const names = raw && typeof raw === 'object' ? Object.keys(raw) : [];
+  const streams = {};
+  for (const name of names) {
+    const spec = raw[name];
+    if (!spec || typeof spec !== 'object') {
+      continue;
+    }
+    streams[name] = {
+      producers: (spec.producers || []).map((producer) => ({
+        format_name: producer.format_name,
+        protocol: producer.protocol,
+        remote_addr: producer.remote_addr,
+        bytes_recv: producer.bytes_recv,
+      })),
+      consumers: (spec.consumers || []).map((consumer) => ({
+        format_name: consumer.format_name,
+        protocol: consumer.protocol,
+        user_agent: consumer.user_agent || null,
+        remote_addr: consumer.remote_addr || null,
+        bytes_send: consumer.bytes_send,
+      })),
+    };
+  }
+  return streams;
+}
+
+async function loadGo2RtcDebugInfo() {
   try {
-    const streams = await fetchLocalJson('/api/streams');
+    const streamsRaw = await fetchLocalJson('/api/streams');
+    const keys = streamsRaw && typeof streamsRaw === 'object' ? Object.keys(streamsRaw) : [];
     return {
       healthy: true,
-      streamCount: Array.isArray(streams) ? streams.length : Object.keys(streams || {}).length,
+      streamCount: keys.length,
+      error: null,
+      streams: summarizeGo2RtcStreamsPayload(streamsRaw),
     };
   } catch (error) {
     return {
       healthy: false,
+      streamCount: 0,
       error: error.message,
+      streams: null,
     };
   }
 }
@@ -1171,15 +1207,32 @@ app.get('/api/focus_browser', (req, res) => {
 });
 
 app.get('/api/debug', async (req, res) => {
-  const [monitorStatus, go2rtcStatus, firefoxStatus] = await Promise.all([
+  const [monitorStatus, go2rtcInfo, firefoxStatus, journalCmd, unameArch] = await Promise.all([
     getMonitorStatus(),
-    getGo2RtcStatus(),
+    loadGo2RtcDebugInfo(),
     runCommand('pgrep firefox'),
+    runCommand('journalctl -u go2rtc -n 28 --no-pager 2>/dev/null'),
+    runCommand('uname -m'),
   ]);
 
   const currentTime = Date.now();
   const timerRuntime = timer_start_time ? currentTime - timer_start_time : null;
   const streamRuntime = timer_stream_start_time ? currentTime - timer_stream_start_time : null;
+
+  const journalTail = journalCmd.ok
+    ? journalCmd.stdout
+        .split(/\r?\n/)
+        .map((line) => line.trimEnd())
+        .filter((line) => line.length > 0)
+        .reverse()
+    : [];
+
+  const go2rtcStatusPayload = {
+    healthy: go2rtcInfo.healthy,
+    streamCount: go2rtcInfo.streamCount,
+    ...(go2rtcInfo.error ? { error: go2rtcInfo.error } : {}),
+    ...(go2rtcInfo.streams ? { streams: go2rtcInfo.streams } : {}),
+  };
 
   res.status(200).json({
     timestamp: new Date().toISOString(),
@@ -1216,8 +1269,12 @@ app.get('/api/debug', async (req, res) => {
       actual_monitor_status: monitorStatus.actualMonitorStatus,
       firefox_running: firefoxStatus.ok,
       firefox_pids: firefoxStatus.ok ? firefoxStatus.stdout.trim().split('\n').filter(Boolean) : [],
-      go2rtc: go2rtcStatus,
+      host_arch: unameArch.ok ? unameArch.stdout.trim() : null,
+      go2rtc: go2rtcStatusPayload,
     },
+    go2rtc_journal_tail: journalTail,
+    go2rtc_journal_ok: journalCmd.ok,
+    ...(journalCmd.ok ? {} : { go2rtc_journal_error: journalCmd.error || journalCmd.stderr || null }),
     monitor_details: {
       command_used: `${wlrRandrEnvPrefix()} wlr-randr --output HDMI-A-1`,
       wlr_randr_output: monitorStatus.rawOutput,

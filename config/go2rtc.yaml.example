@@ -4,8 +4,12 @@ api:
 rtsp:
   listen: "127.0.0.1:8554"
 
+# 127.0.0.1: WebRTC nur lokal; Browser am gleichen Rechner (Kiosk → Node-Proxy) funktioniert,
+# direkter Zugriff von anderen Geräten auf UDP/TCP 8555 entfällt.
 webrtc:
-  listen: ":8555"
+  listen: "127.0.0.1:8555"
+  filters:
+    loopback: true
 
 preload:
   doorbell: "video"
@@ -15,4 +19,4 @@ streams:
   doorbell:
     - rtsp://192.168.1.1:7447/3Zs8SwrImTV2rjNs
   frontyard:
-    - rtsp://192.168.1.1:7447/UWlJ0sQ5GKc9Qygj
+    - rtsp://192.168.1.1:7441/5sxvfiSSLCF9vYl3

@@ -26,8 +26,11 @@ let lastDashboardPath = "/status/";
 let playbackAssistTimer = 0;
 let playbackAssistUntil = 0;
 
-const PLAYBACK_ASSIST_INTERVAL_MS = 2500;
-const PLAYBACK_ASSIST_MAX_MS = 90000;
+const PLAYBACK_ASSIST_INTERVAL_MS = 900;
+const PLAYBACK_ASSIST_MAX_MS = 120000;
+
+/** @type {WeakMap<HTMLVideoElement, { cleanup: () => void }>} */
+const videoPlaybackHooks = new WeakMap();
 
 function stopPlaybackAssist() {
   if (playbackAssistTimer) {
@@ -72,9 +75,52 @@ function pickPrimaryVideo(doc) {
   return videos[0];
 }
 
+function triggerGo2rtcPlayerPlay(doc) {
+  for (const node of doc.querySelectorAll("video-stream")) {
+    if (typeof node.play === "function") {
+      try {
+        node.play();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
+function ensureVideoPlaybackHooks(video) {
+  if (!video || videoPlaybackHooks.has(video)) {
+    return;
+  }
+  const bump = () => {
+    void tryResumeGo2rtcPlayback();
+  };
+  const onStreamAdd = () => bump();
+  video.addEventListener("loadedmetadata", bump);
+  video.addEventListener("loadeddata", bump);
+  video.addEventListener("canplay", bump);
+  video.addEventListener("playing", bump);
+  const stream = video.srcObject;
+  if (stream && typeof stream.addEventListener === "function") {
+    stream.addEventListener("addtrack", onStreamAdd);
+  }
+  videoPlaybackHooks.set(video, {
+    cleanup: () => {
+      video.removeEventListener("loadedmetadata", bump);
+      video.removeEventListener("loadeddata", bump);
+      video.removeEventListener("canplay", bump);
+      video.removeEventListener("playing", bump);
+      const s = video.srcObject;
+      if (s && typeof s.removeEventListener === "function") {
+        s.removeEventListener("addtrack", onStreamAdd);
+      }
+      videoPlaybackHooks.delete(video);
+    },
+  });
+}
+
 /**
- * Versucht Wiedergabe zu starten (wie go2rtc: bei Fehlschlag stumm schalten und erneut).
- * @returns {Promise<boolean>} true wenn das Video läuft oder nichts zu tun war
+ * Versucht Wiedergabe zu starten (Firefox/Kiosk: zuerst stumm, go2rtc video-stream.play()).
+ * @returns {Promise<boolean>} true wenn das Video läuft oder noch kein Medium da ist
  */
 async function tryResumeGo2rtcPlayback() {
   const frame = elements.frame;
@@ -90,10 +136,15 @@ async function tryResumeGo2rtcPlayback() {
   if (!doc) {
     return false;
   }
+
+  triggerGo2rtcPlayerPlay(doc);
+
   const video = pickPrimaryVideo(doc);
   if (!video) {
     return false;
   }
+  ensureVideoPlaybackHooks(video);
+
   if (!video.paused) {
     return true;
   }
@@ -104,27 +155,35 @@ async function tryResumeGo2rtcPlayback() {
   if (!hasMedia) {
     return false;
   }
+
+  video.muted = true;
   try {
     await video.play();
     return true;
   } catch {
-    if (!video.muted) {
-      video.muted = true;
-      try {
-        await video.play();
-        return true;
-      } catch {
-        return false;
-      }
+    try {
+      video.setAttribute("playsinline", "");
+      await video.play();
+      return true;
+    } catch {
+      return false;
     }
-    return false;
+  }
+}
+
+function scheduleIframePlaybackRetries() {
+  const delays = [0, 120, 400, 1200, 2800];
+  for (const ms of delays) {
+    window.setTimeout(() => {
+      void tryResumeGo2rtcPlayback();
+    }, ms);
   }
 }
 
 function init() {
   if (elements.frame) {
     elements.frame.addEventListener("load", () => {
-      void tryResumeGo2rtcPlayback();
+      scheduleIframePlaybackRetries();
     });
   }
   if (elements.frameWrap) {
