@@ -83,6 +83,26 @@ streams:
     - rtsp://192.168.1.1:7447/UWlJ0sQ5GKc9Qygj
 ```
 
+### UniFi Protect: RTSP-URL aus der Konsole übernehmen
+
+Wenn du in UniFi eine **RTSPS**-URL kopierst, passt sie für **go2rtc** oft nicht unverändert. Übliche Anpassungen:
+
+1. **`rtsps://` → `rtsp://`**  
+   Das **`s`** (TLS im Schema-Namen) entfernen, wenn du **Klartext-RTSP** wie in den Beispielen oben nutzt.
+
+2. **Alles ab `?` streichen**  
+   Zusätze wie **`?enableSrtp`** oder andere Query-Parameter **komplett entfernen** – die URL endet dann direkt nach dem Stream-Pfad.
+
+3. **Port prüfen und ggf. anpassen**  
+   RTSPS-Links zeigen oft Port **`7441`**. Für **`rtsp://`** ohne TLS nutzt Protect typischerweise **`7447`** (je nach Konsole/Firmware; in der Protect-Oberfläche den Hinweis zum RTSP-Port lesen). Der Port aus dem kopierten RTSPS-Link ist also **nicht** automatisch der richtige für deine `rtsp://`-Zeile.
+
+**Beispiel:** aus  
+`rtsps://192.168.1.1:7441/abc123?enableSrtp`  
+wird z. B.  
+`rtsp://192.168.1.1:7447/abc123`.
+
+Wenn du **TLS** beibehalten willst, bietet go2rtc für UniFi oft **`rtspx://`** statt `rtsps://` an (ohne `?enableSrtp`); Details in der [go2rtc-RTSP-Dokumentation](https://go2rtc.org/internal/rtsp/).
+
 ### Aktionsbuttons
 
 Die Buttons für Gartentor und Eingangstür werden über `config/app-config.json` gesteuert:
