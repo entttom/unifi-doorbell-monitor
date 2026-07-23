@@ -34,7 +34,27 @@ Das Skript:
   - `status-dashboard/config/calendar-url.txt`
 - registriert `go2rtc` als `systemd`-Dienst
 - hinterlegt einen gezielten `sudoers`-Eintrag, damit die Weboberfläche `go2rtc` nach Konfigurationsänderungen neu starten kann
-- startet die Node-App über PM2
+- startet die Node-App über PM2 auf **Port 80**
+
+### Port der Weboberfläche
+
+Standard ist Port 80, damit `http://<pi-ip>/` ohne Portangabe funktioniert. Weil ein normaler
+Benutzer keine Ports unter 1024 binden darf, gibt das Installskript dem Node-Binary die dafür
+nötige Capability, statt PM2 als root laufen zu lassen:
+
+```bash
+sudo setcap 'cap_net_bind_service=+ep' $(readlink -f $(which node))
+```
+
+**Wichtig:** Ein Update des `nodejs`-Pakets setzt das zurück — die App startet danach nicht mehr
+(`EACCES: permission denied 0.0.0.0:80`). Dann den Befehl oben erneut ausführen und
+`pm2 restart unifi-doorbell-monitor`.
+
+Ein anderer Port geht ohne Capability:
+
+```bash
+APP_PORT=3000 ./install_go2rtc_native.sh
+```
 
 ## Wichtige Dateien
 

@@ -9,14 +9,18 @@ INSTALL_HOME="$(getent passwd "$INSTALL_USER" | cut -d: -f6)"
 GO2RTC_VERSION="${GO2RTC_VERSION:-}"
 GO2RTC_FALLBACK_VERSION="v1.9.13"
 GO2RTC_BIN_URL=""
+# Standard-Port der Weboberfläche. Mit APP_PORT=3000 ./install_go2rtc_native.sh überschreibbar.
+APP_PORT="${APP_PORT:-80}"
 
 echo "=== UniFi Doorbell Monitor mit go2rtc installieren ==="
 echo "Projektverzeichnis: $ROOT_DIR"
 echo "Installationsbenutzer: $INSTALL_USER"
+echo "Port der Weboberfläche: $APP_PORT"
 
 sudo apt update
 # ffmpeg liefert ffplay für /api/play_sound (Lautstärke + Tempo ohne Tonhöhenversatz).
-sudo apt install -y curl ca-certificates nodejs npm firefox-esr wmctrl ffmpeg
+# libcap2-bin liefert setcap für privilegierte Ports (< 1024).
+sudo apt install -y curl ca-certificates nodejs npm firefox-esr wmctrl ffmpeg libcap2-bin
 sudo npm install -g pm2
 
 mkdir -p "$CONFIG_DIR"
@@ -101,10 +105,23 @@ sudo systemctl enable --now go2rtc
 cd "$ROOT_DIR"
 npm install
 
+# Ports unter 1024 darf ein normaler Benutzer nicht binden. Statt PM2 als root laufen zu
+# lassen, bekommt nur das Node-Binary die dafür nötige Capability.
+if [ "$APP_PORT" -lt 1024 ]; then
+  NODE_BIN="$(readlink -f "$(command -v node)")"
+  if [ -n "$NODE_BIN" ]; then
+    sudo setcap 'cap_net_bind_service=+ep' "$NODE_BIN"
+    echo "cap_net_bind_service gesetzt für $NODE_BIN (Port $APP_PORT)."
+    echo "Hinweis: Ein Update des nodejs-Pakets setzt das zurück — dann erneut ausführen."
+  else
+    echo "WARNUNG: node nicht gefunden, Port $APP_PORT kann nicht gebunden werden."
+  fi
+fi
+
 if pm2 describe unifi-doorbell-monitor >/dev/null 2>&1; then
-  DISPLAY=:0 pm2 restart unifi-doorbell-monitor --update-env
+  PORT="$APP_PORT" DISPLAY=:0 pm2 restart unifi-doorbell-monitor --update-env
 else
-  DISPLAY=:0 pm2 start server.js --name unifi-doorbell-monitor
+  PORT="$APP_PORT" DISPLAY=:0 pm2 start server.js --name unifi-doorbell-monitor
 fi
 
 pm2 save
@@ -126,6 +143,14 @@ echo ""
 echo "Node/PM2 Status:"
 pm2 status || true
 echo ""
-echo "Weboberfläche: http://$(hostname -I | awk '{print $1}'):3000/status/"
-echo "API Debug:      http://$(hostname -I | awk '{print $1}'):3000/api/debug"
+PI_IP="$(hostname -I | awk '{print $1}')"
+if [ "$APP_PORT" = "80" ]; then
+  BASE_URL="http://${PI_IP}"
+else
+  BASE_URL="http://${PI_IP}:${APP_PORT}"
+fi
+
+echo "Weboberfläche: ${BASE_URL}/"
+echo "Einstellungen: ${BASE_URL}/status/settings.html"
+echo "API Debug:      ${BASE_URL}/api/debug"
 echo "go2rtc intern:  http://127.0.0.1:1984/"
