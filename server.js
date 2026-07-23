@@ -1438,6 +1438,11 @@ app.delete('/api/sounds/:name', async (req, res) => {
 
 app.use('/go2rtc', proxyGo2RtcHttp);
 
+// Wurzel auf das Dashboard umleiten, damit http://pi/ ohne Pfad funktioniert.
+app.get('/', (req, res) => {
+  res.redirect(302, appConfig.ui.dashboardPath || '/status/');
+});
+
 app.get('/api/calendar', async (req, res) => {
   let calendarUrl;
 

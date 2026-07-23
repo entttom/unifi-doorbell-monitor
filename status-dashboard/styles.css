@@ -797,6 +797,12 @@ body.settings-page {
   background:
     radial-gradient(circle at top left, rgba(36, 91, 69, 0.12), transparent 26%),
     linear-gradient(160deg, #f1ede3 0%, #e8e1d1 100%);
+  /* html/body sind für den Kiosk auf overflow:hidden — die Einstellungen sind länger als
+     der Schirm und müssen deshalb als eigener Scroll-Container laufen. */
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .settings-shell {
