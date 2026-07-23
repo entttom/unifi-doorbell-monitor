@@ -1,6 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const { exec } = require('node:child_process');
+const { exec, spawn } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
 const fsPromises = require('node:fs/promises');
@@ -30,6 +30,14 @@ const APP_CONFIG_PATH = path.join(CONFIG_DIR, 'app-config.json');
 const APP_CONFIG_EXAMPLE_PATH = path.join(CONFIG_DIR, 'app-config.example.json');
 const GO2RTC_CONFIG_PATH = path.join(CONFIG_DIR, 'go2rtc.yaml');
 const GO2RTC_CONFIG_EXAMPLE_PATH = path.join(CONFIG_DIR, 'go2rtc.yaml.example');
+
+const SOUNDS_DIR = path.join(__dirname, 'sounds');
+const SOUND_EXTENSIONS = ['.mp3', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.flac'];
+const SOUND_UPLOAD_LIMIT = '25mb';
+const SOUND_MAX_REPEAT = 50;
+const SOUND_MAX_PAUSE_MS = 60000;
+const SOUND_MIN_SPEED = 0.5;
+const SOUND_MAX_SPEED = 2;
 
 const DEFAULT_APP_CONFIG = {
   ui: {
@@ -894,6 +902,539 @@ function sendJsonOk(res, extra = {}) {
     ...extra,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Sounds: Verwaltung der MP3-Dateien und Wiedergabe über den Audio-Ausgang des Pi
+// ---------------------------------------------------------------------------
+
+const SOUND_PLAYERS = [
+  {
+    // ffplay kann Lautstärke und Tempo in einem Filtergraph — bevorzugte Variante.
+    binary: 'ffplay',
+    buildArgs: (filePath, { volume, speed }) => {
+      const filters = [`volume=${(volume / 100).toFixed(3)}`];
+      if (speed !== 1) {
+        filters.push(`atempo=${speed.toFixed(3)}`);
+      }
+      return ['-nodisp', '-autoexit', '-loglevel', 'error', '-af', filters.join(','), filePath];
+    },
+  },
+  {
+    binary: 'mpv',
+    buildArgs: (filePath, { volume, speed }) => [
+      '--no-video',
+      '--really-quiet',
+      `--volume=${Math.round(volume)}`,
+      `--speed=${speed.toFixed(3)}`,
+      filePath,
+    ],
+  },
+  {
+    binary: 'mpg123',
+    buildArgs: (filePath, { volume, speed }) => {
+      const args = ['-q', '-f', String(Math.round((volume / 100) * 32768))];
+      if (speed !== 1) {
+        // mpg123 kennt kein Tempo ohne Tonhöhe: --pitch verschiebt beides.
+        args.push('--pitch', clampNumber(speed - 1, -0.5, 0.5).toFixed(3));
+      }
+      args.push(filePath);
+      return args;
+    },
+  },
+  {
+    binary: 'cvlc',
+    buildArgs: (filePath, { volume, speed }) => [
+      '--intf',
+      'dummy',
+      '--no-video',
+      '--play-and-exit',
+      '--gain',
+      (volume / 100).toFixed(3),
+      '--rate',
+      speed.toFixed(3),
+      filePath,
+    ],
+  },
+];
+
+let soundPlayerPromise = null;
+let activePlayback = null;
+
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function parseNumberParam(raw, fallback, min, max) {
+  if (raw === undefined || raw === null || raw === '') {
+    return fallback;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return clampNumber(parsed, min, max);
+}
+
+function parseBooleanParam(raw, fallback = false) {
+  if (raw === undefined || raw === null || raw === '') {
+    return fallback;
+  }
+  if (typeof raw === 'boolean') {
+    return raw;
+  }
+  const normalized = String(raw).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'ja', 'on'].includes(normalized)) {
+    return true;
+  }
+  if (['0', 'false', 'no', 'nein', 'off'].includes(normalized)) {
+    return false;
+  }
+  return fallback;
+}
+
+function sanitizeSoundName(rawName) {
+  const candidate = typeof rawName === 'string' ? rawName.trim() : '';
+  if (!candidate) {
+    throw new Error('Dateiname ist erforderlich.');
+  }
+
+  // Kein Pfad-Anteil: nur der reine Dateiname wird akzeptiert.
+  const baseName = path.basename(candidate);
+  if (baseName !== candidate || baseName === '.' || baseName === '..') {
+    throw new Error('Dateiname darf keinen Pfad enthalten.');
+  }
+
+  if (!/^[A-Za-z0-9 ._-]+$/.test(baseName)) {
+    throw new Error('Dateiname darf nur Buchstaben, Ziffern, Leerzeichen, Punkt, Bindestrich und Unterstrich enthalten.');
+  }
+
+  const extension = path.extname(baseName).toLowerCase();
+  if (!SOUND_EXTENSIONS.includes(extension)) {
+    throw new Error(`Nicht unterstützte Dateiendung (erlaubt: ${SOUND_EXTENSIONS.join(', ')}).`);
+  }
+
+  if (baseName.length > 120) {
+    throw new Error('Dateiname ist zu lang (max. 120 Zeichen).');
+  }
+
+  return baseName;
+}
+
+function resolveSoundPath(rawName) {
+  const name = sanitizeSoundName(rawName);
+  const filePath = path.join(SOUNDS_DIR, name);
+  const relative = path.relative(SOUNDS_DIR, filePath);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('Ungültiger Dateiname.');
+  }
+  return { name, filePath };
+}
+
+async function ensureSoundsDir() {
+  await fsPromises.mkdir(SOUNDS_DIR, { recursive: true });
+}
+
+async function listSounds() {
+  await ensureSoundsDir();
+  const entries = await fsPromises.readdir(SOUNDS_DIR, { withFileTypes: true });
+  const sounds = [];
+
+  for (const entry of entries) {
+    if (!entry.isFile()) {
+      continue;
+    }
+    if (!SOUND_EXTENSIONS.includes(path.extname(entry.name).toLowerCase())) {
+      continue;
+    }
+
+    try {
+      const stats = await fsPromises.stat(path.join(SOUNDS_DIR, entry.name));
+      sounds.push({
+        name: entry.name,
+        sizeBytes: stats.size,
+        modifiedAt: stats.mtime.toISOString(),
+      });
+    } catch (error) {
+      // Datei wurde zwischenzeitlich entfernt — einfach überspringen.
+    }
+  }
+
+  return sounds.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+}
+
+async function detectSoundPlayer() {
+  if (!soundPlayerPromise) {
+    soundPlayerPromise = (async () => {
+      for (const player of SOUND_PLAYERS) {
+        const result = await runCommand(`command -v ${player.binary}`, 2000);
+        if (result.ok && result.stdout.trim()) {
+          return { ...player, binaryPath: result.stdout.trim() };
+        }
+      }
+      return null;
+    })();
+  }
+
+  return soundPlayerPromise;
+}
+
+function stopSoundPlayback(reason = 'stopped') {
+  if (!activePlayback) {
+    return false;
+  }
+
+  const playback = activePlayback;
+  playback.cancelled = true;
+  playback.reason = reason;
+
+  if (playback.pauseTimer) {
+    clearTimeout(playback.pauseTimer);
+    playback.pauseTimer = null;
+  }
+  if (playback.child && playback.child.exitCode === null && !playback.child.killed) {
+    playback.child.kill('SIGTERM');
+  }
+
+  activePlayback = null;
+  return true;
+}
+
+function spawnSoundPlayer(player, filePath, options, playback) {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(player.binaryPath || player.binary, player.buildArgs(filePath, options), {
+        stdio: 'ignore',
+        detached: false,
+      });
+    } catch (error) {
+      resolve({ ok: false, error: error.message });
+      return;
+    }
+
+    playback.child = child;
+
+    child.on('error', (error) => {
+      playback.child = null;
+      resolve({ ok: false, error: error.message });
+    });
+
+    child.on('close', (code, signal) => {
+      playback.child = null;
+      if (signal) {
+        resolve({ ok: false, error: `Wiedergabe abgebrochen (${signal})` });
+        return;
+      }
+      resolve({ ok: code === 0, error: code === 0 ? null : `Player beendete sich mit Code ${code}` });
+    });
+  });
+}
+
+function sleepCancellable(ms, playback) {
+  return new Promise((resolve) => {
+    playback.pauseTimer = setTimeout(() => {
+      playback.pauseTimer = null;
+      resolve();
+    }, ms);
+  });
+}
+
+async function playSoundFile(name, options) {
+  const { filePath } = resolveSoundPath(name);
+
+  try {
+    await fsPromises.access(filePath, fs.constants.R_OK);
+  } catch (error) {
+    throw new Error(`Sound "${name}" wurde nicht gefunden.`);
+  }
+
+  const player = await detectSoundPlayer();
+  if (!player) {
+    throw new Error(
+      `Kein Audio-Player gefunden. Bitte einen davon installieren: ${SOUND_PLAYERS.map((entry) => entry.binary).join(', ')}.`
+    );
+  }
+
+  // Neue Wiedergabe hat Vorrang: eine noch laufende Sequenz wird beendet.
+  stopSoundPlayback('superseded');
+
+  const playback = {
+    name,
+    options,
+    player: player.binary,
+    startedAt: Date.now(),
+    cancelled: false,
+    reason: null,
+    child: null,
+    pauseTimer: null,
+    playedCount: 0,
+  };
+  activePlayback = playback;
+
+  const run = (async () => {
+    const errors = [];
+
+    for (let index = 0; index < options.repeat; index += 1) {
+      if (playback.cancelled) {
+        break;
+      }
+
+      const result = await spawnSoundPlayer(player, filePath, options, playback);
+      if (playback.cancelled) {
+        break;
+      }
+      if (result.ok) {
+        playback.playedCount += 1;
+      } else if (result.error) {
+        errors.push(result.error);
+      }
+
+      const isLast = index === options.repeat - 1;
+      if (!isLast && options.pauseMs > 0) {
+        await sleepCancellable(options.pauseMs, playback);
+      }
+    }
+
+    if (activePlayback === playback) {
+      activePlayback = null;
+    }
+
+    return {
+      file: name,
+      player: player.binary,
+      playedCount: playback.playedCount,
+      requestedCount: options.repeat,
+      cancelled: playback.cancelled,
+      reason: playback.reason,
+      durationMs: Date.now() - playback.startedAt,
+      errors,
+    };
+  })();
+
+  playback.promise = run;
+  return { playback, run, player: player.binary };
+}
+
+function parsePlaybackOptions(source) {
+  const volume = parseNumberParam(source.volume ?? source.lautstaerke, 100, 0, 100);
+  const repeat = Math.round(
+    parseNumberParam(source.repeat ?? source.count ?? source.times ?? source.wiederholungen, 1, 1, SOUND_MAX_REPEAT)
+  );
+  const speed = parseNumberParam(
+    source.speed ?? source.rate ?? source.geschwindigkeit,
+    1,
+    SOUND_MIN_SPEED,
+    SOUND_MAX_SPEED
+  );
+
+  // `pause` darf boolesch ("soll pausiert werden?") oder direkt als Millisekunden kommen.
+  const rawPause = source.pause ?? source.pausieren;
+  const rawPauseMs = source.pauseMs ?? source.gapMs ?? source.gap ?? source.pauseDauer;
+  const pauseAsNumber = rawPause === undefined || rawPause === '' ? NaN : Number(rawPause);
+  const hasNumericPause = Number.isFinite(pauseAsNumber);
+
+  let pauseEnabled;
+  if (hasNumericPause && pauseAsNumber > 1) {
+    pauseEnabled = true;
+  } else if (rawPause !== undefined && rawPause !== '') {
+    pauseEnabled = parseBooleanParam(rawPause, false);
+  } else {
+    pauseEnabled = rawPauseMs !== undefined && rawPauseMs !== '';
+  }
+
+  let pauseMs = 0;
+  if (pauseEnabled) {
+    if (rawPauseMs !== undefined && rawPauseMs !== '') {
+      pauseMs = parseNumberParam(rawPauseMs, 500, 0, SOUND_MAX_PAUSE_MS);
+    } else if (hasNumericPause && pauseAsNumber > 1) {
+      pauseMs = clampNumber(pauseAsNumber, 0, SOUND_MAX_PAUSE_MS);
+    } else {
+      pauseMs = 500;
+    }
+  }
+
+  return {
+    volume,
+    repeat,
+    speed,
+    pauseEnabled,
+    pauseMs: Math.round(pauseMs),
+  };
+}
+
+function buildPlaybackStatus() {
+  if (!activePlayback) {
+    return { playing: false };
+  }
+
+  return {
+    playing: true,
+    file: activePlayback.name,
+    player: activePlayback.player,
+    playedCount: activePlayback.playedCount,
+    requestedCount: activePlayback.options.repeat,
+    options: activePlayback.options,
+    startedAt: new Date(activePlayback.startedAt).toISOString(),
+  };
+}
+
+async function handlePlaySound(req, res) {
+  const source = { ...(req.query || {}), ...(req.body && typeof req.body === 'object' ? req.body : {}) };
+  const rawName = source.file ?? source.name ?? source.sound ?? source.datei;
+  const waitForCompletion = parseBooleanParam(source.wait, false);
+
+  try {
+    const options = parsePlaybackOptions(source);
+    const { run, player } = await playSoundFile(rawName, options);
+
+    if (!waitForCompletion) {
+      run.catch((error) => {
+        console.error('[SOUND] Wiedergabe fehlgeschlagen:', error.message);
+      });
+      sendJsonOk(res, {
+        file: sanitizeSoundName(rawName),
+        player,
+        options,
+        waited: false,
+      });
+      return;
+    }
+
+    const result = await run;
+    sendJsonOk(res, { ...result, options, waited: true });
+  } catch (error) {
+    res.status(400).json({
+      Status: 'Error',
+      Message: error.message,
+    });
+  }
+}
+
+app.get('/api/play_sound', handlePlaySound);
+app.post('/api/play_sound', handlePlaySound);
+
+app.get('/api/stop_sound', (req, res) => {
+  const stopped = stopSoundPlayback('stopped');
+  sendJsonOk(res, { stopped });
+});
+
+app.get('/api/sound_status', async (req, res) => {
+  const player = await detectSoundPlayer();
+  sendJsonOk(res, {
+    playback: buildPlaybackStatus(),
+    player: player ? player.binary : null,
+  });
+});
+
+app.get('/api/sounds', async (req, res) => {
+  try {
+    const [sounds, player] = await Promise.all([listSounds(), detectSoundPlayer()]);
+    sendJsonOk(res, {
+      sounds,
+      player: player ? player.binary : null,
+      limits: {
+        maxRepeat: SOUND_MAX_REPEAT,
+        maxPauseMs: SOUND_MAX_PAUSE_MS,
+        minSpeed: SOUND_MIN_SPEED,
+        maxSpeed: SOUND_MAX_SPEED,
+        extensions: SOUND_EXTENSIONS,
+        uploadLimit: SOUND_UPLOAD_LIMIT,
+      },
+      playback: buildPlaybackStatus(),
+    });
+  } catch (error) {
+    res.status(500).json({ Status: 'Error', Message: error.message });
+  }
+});
+
+app.get('/api/sounds/:name/file', async (req, res) => {
+  try {
+    const { filePath } = resolveSoundPath(req.params.name);
+    res.sendFile(filePath, (error) => {
+      if (error && !res.headersSent) {
+        res.status(404).json({ Status: 'Error', Message: 'Sound wurde nicht gefunden.' });
+      }
+    });
+  } catch (error) {
+    res.status(400).json({ Status: 'Error', Message: error.message });
+  }
+});
+
+app.post(
+  '/api/sounds/:name',
+  express.raw({ type: () => true, limit: SOUND_UPLOAD_LIMIT }),
+  async (req, res) => {
+    try {
+      const { name, filePath } = resolveSoundPath(req.params.name);
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+        throw new Error('Keine Datei-Daten empfangen.');
+      }
+
+      const overwrite = parseBooleanParam(req.query.overwrite, true);
+      if (!overwrite && fs.existsSync(filePath)) {
+        throw new Error(`"${name}" existiert bereits.`);
+      }
+
+      await ensureSoundsDir();
+      await fsPromises.writeFile(filePath, req.body);
+
+      sendJsonOk(res, {
+        saved: true,
+        sound: { name, sizeBytes: req.body.length },
+        sounds: await listSounds(),
+      });
+    } catch (error) {
+      res.status(400).json({ Status: 'Error', Message: error.message });
+    }
+  }
+);
+
+app.post('/api/sounds/:name/rename', async (req, res) => {
+  try {
+    const current = resolveSoundPath(req.params.name);
+    const nextRaw = req.body && (req.body.newName ?? req.body.name ?? req.body.neuerName);
+    const next = resolveSoundPath(nextRaw);
+
+    if (next.name === current.name) {
+      sendJsonOk(res, { renamed: false, sound: { name: current.name }, sounds: await listSounds() });
+      return;
+    }
+
+    if (!fs.existsSync(current.filePath)) {
+      throw new Error(`Sound "${current.name}" wurde nicht gefunden.`);
+    }
+    if (fs.existsSync(next.filePath)) {
+      throw new Error(`"${next.name}" existiert bereits.`);
+    }
+
+    await fsPromises.rename(current.filePath, next.filePath);
+    sendJsonOk(res, {
+      renamed: true,
+      sound: { name: next.name, previousName: current.name },
+      sounds: await listSounds(),
+    });
+  } catch (error) {
+    res.status(400).json({ Status: 'Error', Message: error.message });
+  }
+});
+
+app.delete('/api/sounds/:name', async (req, res) => {
+  try {
+    const { name, filePath } = resolveSoundPath(req.params.name);
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Sound "${name}" wurde nicht gefunden.`);
+    }
+
+    if (activePlayback && activePlayback.name === name) {
+      stopSoundPlayback('deleted');
+    }
+
+    await fsPromises.unlink(filePath);
+    sendJsonOk(res, { deleted: true, sound: { name }, sounds: await listSounds() });
+  } catch (error) {
+    res.status(400).json({ Status: 'Error', Message: error.message });
+  }
+});
 
 app.use('/go2rtc', proxyGo2RtcHttp);
 

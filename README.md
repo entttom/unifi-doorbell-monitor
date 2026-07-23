@@ -49,7 +49,9 @@ Das Skript:
 - `status-dashboard/stream.html`
   Dedizierte Stream-Seite
 - `status-dashboard/settings.html`
-  Einstellungen für Streams, Kalender und Aktionsbuttons
+  Einstellungen für Streams, Kalender, Aktionsbuttons und Sounds
+- `sounds/`
+  Hochgeladene MP3s für `/api/play_sound` (nicht im Repository)
 
 ## Konfiguration
 
@@ -62,6 +64,11 @@ Die Konfiguration ist unter `/status/settings.html` erreichbar. Dort lassen sich
 - go2rtc Listen-Adressen
 - Stream-Titel
 - URLs und Labels für Gartentor und Eingangstür
+- Sounds hochladen, umbenennen, löschen und mit den gewünschten Parametern testen
+
+Der Sound-Bereich speichert sofort und ist unabhängig vom Speichern-Button. Die dort eingestellten
+Werte für Lautstärke, Wiederholungen, Geschwindigkeit und Pause gelten für den Test-Button und
+werden als fertige API-URL unter der Liste angezeigt.
 
 Beim Speichern schreibt die Node-App:
 
@@ -139,6 +146,50 @@ Neue Hilfsendpunkte:
 - `/api/settings`
 - `/api/actions/:id`
 - `/go2rtc/*` als lokaler Reverse Proxy zur nativen go2rtc-Instanz
+
+### Sounds abspielen
+
+`/api/play_sound` spielt eine hochgeladene Datei aus `sounds/` über den Audio-Ausgang des Pi ab
+(GET oder POST, Parameter als Query-String oder JSON-Body):
+
+```bash
+curl "http://pi:3000/api/play_sound?file=tuerklingen.mp3&volume=80&repeat=3&speed=1.0&pause=true&pauseMs=500"
+```
+
+| Parameter | Standard | Bereich | Bedeutung |
+| --- | --- | --- | --- |
+| `file` | – | – | Dateiname inkl. Endung, z. B. `tuerklingen.mp3` (Pflicht) |
+| `volume` | `100` | 0–100 | Lautstärke in Prozent |
+| `repeat` | `1` | 1–50 | Wie oft die Datei hintereinander gespielt wird |
+| `speed` | `1.0` | 0.5–2.0 | Abspielgeschwindigkeit |
+| `pause` | `false` | true/false | Ob zwischen den Wiederholungen pausiert wird |
+| `pauseMs` | `500` | 0–60000 | Dauer der Pause in Millisekunden |
+| `wait` | `false` | true/false | Antwort erst nach dem letzten Durchlauf statt sofort |
+
+`pause` darf auch direkt eine Millisekundenzahl sein (`pause=800` entspricht `pause=true&pauseMs=800`).
+Werte außerhalb des Bereichs werden begrenzt, nicht abgelehnt. Eine neue Wiedergabe beendet eine
+noch laufende.
+
+Verwaltung (wird auch von `/status/settings.html` genutzt):
+
+- `GET /api/sounds` — Liste aller Dateien inkl. erkanntem Player und Limits
+- `POST /api/sounds/:name` — Upload, Dateiinhalt als Raw-Body (`Content-Type: application/octet-stream`)
+- `POST /api/sounds/:name/rename` — Body `{"newName":"neuer-name.mp3"}`
+- `DELETE /api/sounds/:name` — löscht die Datei
+- `GET /api/sounds/:name/file` — liefert die Datei aus (Browser-Vorschau)
+- `GET /api/stop_sound` — bricht die laufende Wiedergabe ab
+- `GET /api/sound_status` — aktueller Wiedergabestatus
+
+Erlaubte Endungen: `.mp3`, `.wav`, `.ogg`, `.oga`, `.m4a`, `.aac`, `.flac` (max. 25 MB pro Datei).
+Die Wiedergabe nutzt den ersten verfügbaren Player in dieser Reihenfolge: `ffplay`, `mpv`, `mpg123`,
+`cvlc`. Falls keiner installiert ist:
+
+```bash
+sudo apt install -y ffmpeg
+```
+
+`ffplay` (aus `ffmpeg`) ist die beste Wahl, weil es Lautstärke und Tempo tonhöhenneutral umsetzt;
+`mpg123` verschiebt bei `speed` ≠ 1 auch die Tonhöhe.
 
 ## Betrieb
 

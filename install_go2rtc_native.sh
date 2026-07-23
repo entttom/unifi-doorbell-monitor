@@ -15,11 +15,13 @@ echo "Projektverzeichnis: $ROOT_DIR"
 echo "Installationsbenutzer: $INSTALL_USER"
 
 sudo apt update
-sudo apt install -y curl ca-certificates nodejs npm firefox-esr wmctrl
+# ffmpeg liefert ffplay für /api/play_sound (Lautstärke + Tempo ohne Tonhöhenversatz).
+sudo apt install -y curl ca-certificates nodejs npm firefox-esr wmctrl ffmpeg
 sudo npm install -g pm2
 
 mkdir -p "$CONFIG_DIR"
 mkdir -p "$STATUS_CONFIG_DIR"
+mkdir -p "$ROOT_DIR/sounds"
 
 if [ ! -f "$CONFIG_DIR/app-config.json" ]; then
   cp "$CONFIG_DIR/app-config.example.json" "$CONFIG_DIR/app-config.json"

@@ -77,6 +77,54 @@
             </label>
           </div>
         </section>
+
+        <section class="settings-section">
+          <h2>Sounds</h2>
+          <p class="settings-status-note" id="sounds-status-note">Lade Sounds ...</p>
+
+          <div class="sound-upload">
+            <input id="sound-file-input" type="file" accept="audio/*" multiple>
+            <button class="action-button action-button-secondary" id="sound-upload-button" type="button">
+              Hochladen
+            </button>
+          </div>
+
+          <div class="settings-grid sound-params">
+            <label class="settings-field">
+              <span>Lautstärke (0–100)</span>
+              <input id="sound-volume" type="number" min="0" max="100" step="1" value="100">
+            </label>
+            <label class="settings-field">
+              <span>Wiederholungen</span>
+              <input id="sound-repeat" type="number" min="1" max="50" step="1" value="1">
+            </label>
+            <label class="settings-field">
+              <span>Geschwindigkeit (0.5–2.0)</span>
+              <input id="sound-speed" type="number" min="0.5" max="2" step="0.05" value="1">
+            </label>
+            <label class="settings-field">
+              <span>Pause zwischen Wiederholungen (ms)</span>
+              <input id="sound-pause-ms" type="number" min="0" max="60000" step="100" value="500">
+            </label>
+          </div>
+
+          <label class="sound-toggle">
+            <input id="sound-pause-enabled" type="checkbox">
+            <span>Pause zwischen den Wiederholungen einlegen</span>
+          </label>
+
+          <ul class="sound-list" id="sound-list"></ul>
+
+          <div class="settings-hint">
+            <p>
+              API: <code id="sound-api-example">/api/play_sound?file=tuerklingen.mp3</code><br>
+              Parameter: <code>file</code>, <code>volume</code> (0–100), <code>repeat</code> (1–50),
+              <code>speed</code> (0.5–2.0), <code>pause</code> (true/false) und <code>pauseMs</code>.
+              Mit <code>wait=1</code> antwortet der Server erst nach dem Abspielen,
+              <code>/api/stop_sound</code> bricht ab.
+            </p>
+          </div>
+        </section>
       </section>
 
       <section class="panel settings-panel">
