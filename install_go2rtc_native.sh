@@ -9,18 +9,19 @@ INSTALL_HOME="$(getent passwd "$INSTALL_USER" | cut -d: -f6)"
 GO2RTC_VERSION="${GO2RTC_VERSION:-}"
 GO2RTC_FALLBACK_VERSION="v1.9.13"
 GO2RTC_BIN_URL=""
-# Standard-Port der Weboberfläche. Mit APP_PORT=3000 ./install_go2rtc_native.sh überschreibbar.
-APP_PORT="${APP_PORT:-80}"
+# Port der Node-App. Port 80 wird per iptables hierher umgeleitet (siehe unten).
+APP_PORT="${APP_PORT:-3000}"
+# REDIRECT_PORT_80=0 überspringt die Umleitung, falls auf dem Pi schon etwas auf 80 lauscht.
+REDIRECT_PORT_80="${REDIRECT_PORT_80:-1}"
 
 echo "=== UniFi Doorbell Monitor mit go2rtc installieren ==="
 echo "Projektverzeichnis: $ROOT_DIR"
 echo "Installationsbenutzer: $INSTALL_USER"
-echo "Port der Weboberfläche: $APP_PORT"
+echo "Port der Weboberfläche: $APP_PORT (Port 80 wird umgeleitet: $REDIRECT_PORT_80)"
 
 sudo apt update
 # ffmpeg liefert ffplay für /api/play_sound (Lautstärke + Tempo ohne Tonhöhenversatz).
-# libcap2-bin liefert setcap für privilegierte Ports (< 1024).
-sudo apt install -y curl ca-certificates nodejs npm firefox-esr wmctrl ffmpeg libcap2-bin
+sudo apt install -y curl ca-certificates nodejs npm firefox-esr wmctrl ffmpeg iptables
 sudo npm install -g pm2
 
 mkdir -p "$CONFIG_DIR"
@@ -102,21 +103,35 @@ sudo chmod 440 /etc/sudoers.d/unifi-doorbell-monitor-go2rtc
 sudo systemctl daemon-reload
 sudo systemctl enable --now go2rtc
 
+# Port 80 auf die Node-App umleiten, damit http://<pi-ip>/ ohne Portangabe funktioniert.
+# Die OUTPUT-Regel ist nötig, damit auch der Kiosk-Browser auf dem Pi selbst Port 80 erreicht.
+# -C prüft vorher, sonst sammeln sich bei jedem Lauf doppelte Regeln an.
+if [ "$REDIRECT_PORT_80" = "1" ]; then
+  sudo tee /etc/systemd/system/unifi-doorbell-monitor-port80.service >/dev/null <<EOF
+[Unit]
+Description=Port 80 auf die Weboberfläche (Port ${APP_PORT}) umleiten
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'iptables -t nat -C PREROUTING -p tcp --dport 80 -j REDIRECT --to-port ${APP_PORT} 2>/dev/null || iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port ${APP_PORT}'
+ExecStart=/bin/sh -c 'iptables -t nat -C OUTPUT -o lo -p tcp --dport 80 -j REDIRECT --to-port ${APP_PORT} 2>/dev/null || iptables -t nat -A OUTPUT -o lo -p tcp --dport 80 -j REDIRECT --to-port ${APP_PORT}'
+ExecStop=/bin/sh -c 'iptables -t nat -D PREROUTING -p tcp --dport 80 -j REDIRECT --to-port ${APP_PORT} 2>/dev/null || true'
+ExecStop=/bin/sh -c 'iptables -t nat -D OUTPUT -o lo -p tcp --dport 80 -j REDIRECT --to-port ${APP_PORT} 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now unifi-doorbell-monitor-port80
+  echo "Port 80 wird auf ${APP_PORT} umgeleitet (Dienst unifi-doorbell-monitor-port80)."
+fi
+
 cd "$ROOT_DIR"
 npm install
-
-# Ports unter 1024 darf ein normaler Benutzer nicht binden. Statt PM2 als root laufen zu
-# lassen, bekommt nur das Node-Binary die dafür nötige Capability.
-if [ "$APP_PORT" -lt 1024 ]; then
-  NODE_BIN="$(readlink -f "$(command -v node)")"
-  if [ -n "$NODE_BIN" ]; then
-    sudo setcap 'cap_net_bind_service=+ep' "$NODE_BIN"
-    echo "cap_net_bind_service gesetzt für $NODE_BIN (Port $APP_PORT)."
-    echo "Hinweis: Ein Update des nodejs-Pakets setzt das zurück — dann erneut ausführen."
-  else
-    echo "WARNUNG: node nicht gefunden, Port $APP_PORT kann nicht gebunden werden."
-  fi
-fi
 
 if pm2 describe unifi-doorbell-monitor >/dev/null 2>&1; then
   PORT="$APP_PORT" DISPLAY=:0 pm2 restart unifi-doorbell-monitor --update-env
@@ -144,7 +159,7 @@ echo "Node/PM2 Status:"
 pm2 status || true
 echo ""
 PI_IP="$(hostname -I | awk '{print $1}')"
-if [ "$APP_PORT" = "80" ]; then
+if [ "$REDIRECT_PORT_80" = "1" ]; then
   BASE_URL="http://${PI_IP}"
 else
   BASE_URL="http://${PI_IP}:${APP_PORT}"
@@ -153,4 +168,5 @@ fi
 echo "Weboberfläche: ${BASE_URL}/"
 echo "Einstellungen: ${BASE_URL}/status/settings.html"
 echo "API Debug:      ${BASE_URL}/api/debug"
+echo "Direkt:         http://${PI_IP}:${APP_PORT}/"
 echo "go2rtc intern:  http://127.0.0.1:1984/"

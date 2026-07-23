@@ -34,26 +34,34 @@ Das Skript:
   - `status-dashboard/config/calendar-url.txt`
 - registriert `go2rtc` als `systemd`-Dienst
 - hinterlegt einen gezielten `sudoers`-Eintrag, damit die Weboberfläche `go2rtc` nach Konfigurationsänderungen neu starten kann
-- startet die Node-App über PM2 auf **Port 80**
+- startet die Node-App über PM2 auf Port 3000
+- richtet eine Umleitung von Port 80 auf 3000 ein
 
-### Port der Weboberfläche
+### Port 80
 
-Standard ist Port 80, damit `http://<pi-ip>/` ohne Portangabe funktioniert. Weil ein normaler
-Benutzer keine Ports unter 1024 binden darf, gibt das Installskript dem Node-Binary die dafür
-nötige Capability, statt PM2 als root laufen zu lassen:
+Die Node-App läuft unprivilegiert auf Port 3000; der Kernel leitet Port 80 dorthin um, damit
+`http://<pi-ip>/` ohne Portangabe funktioniert. Die Umleitung steckt in der `systemd`-Unit
+`unifi-doorbell-monitor-port80`, die beim Booten zwei `iptables`-Regeln setzt:
 
 ```bash
-sudo setcap 'cap_net_bind_service=+ep' $(readlink -f $(which node))
+systemctl status unifi-doorbell-monitor-port80
+sudo iptables -t nat -L PREROUTING -n --line-numbers
 ```
 
-**Wichtig:** Ein Update des `nodejs`-Pakets setzt das zurück — die App startet danach nicht mehr
-(`EACCES: permission denied 0.0.0.0:80`). Dann den Befehl oben erneut ausführen und
-`pm2 restart unifi-doorbell-monitor`.
+Die zweite Regel in der `OUTPUT`-Kette ist nötig, damit Port 80 auch vom Pi selbst erreichbar ist —
+sonst funktioniert er im Kiosk-Firefox nicht. Port 3000 bleibt parallel erreichbar.
 
-Ein anderer Port geht ohne Capability:
+Abschalten:
 
 ```bash
-APP_PORT=3000 ./install_go2rtc_native.sh
+sudo systemctl disable --now unifi-doorbell-monitor-port80
+```
+
+Beim Installieren überschreibbar:
+
+```bash
+APP_PORT=8080 ./install_go2rtc_native.sh     # anderer Port für die Node-App
+REDIRECT_PORT_80=0 ./install_go2rtc_native.sh # keine Umleitung einrichten
 ```
 
 ## Wichtige Dateien
