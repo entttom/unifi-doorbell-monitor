@@ -13,15 +13,21 @@ GO2RTC_BIN_URL=""
 APP_PORT="${APP_PORT:-3000}"
 # REDIRECT_PORT_80=0 überspringt die Umleitung, falls auf dem Pi schon etwas auf 80 lauscht.
 REDIRECT_PORT_80="${REDIRECT_PORT_80:-1}"
+# HDMI_AUDIO=0 überspringt die Audio-Konfiguration. Der Wert ist ein PipeWire-
+# Lautstärkefaktor (0.60 = 60 Prozent).
+HDMI_AUDIO="${HDMI_AUDIO:-1}"
+HDMI_AUDIO_VOLUME="${HDMI_AUDIO_VOLUME:-0.60}"
 
 echo "=== UniFi Doorbell Monitor mit go2rtc installieren ==="
 echo "Projektverzeichnis: $ROOT_DIR"
 echo "Installationsbenutzer: $INSTALL_USER"
 echo "Port der Weboberfläche: $APP_PORT (Port 80 wird umgeleitet: $REDIRECT_PORT_80)"
+echo "HDMI-Audio einrichten: $HDMI_AUDIO (Lautstärke: $HDMI_AUDIO_VOLUME)"
 
 sudo apt update
 # ffmpeg liefert ffplay für /api/play_sound (Lautstärke + Tempo ohne Tonhöhenversatz).
-sudo apt install -y curl ca-certificates nodejs npm firefox-esr wmctrl ffmpeg iptables
+sudo apt install -y curl ca-certificates nodejs npm firefox-esr wmctrl ffmpeg iptables \
+  alsa-utils pipewire pipewire-pulse wireplumber
 sudo npm install -g pm2
 
 mkdir -p "$CONFIG_DIR"
@@ -147,6 +153,41 @@ if [ -n "$INSTALL_HOME" ]; then
     echo ""
     echo "PM2 Startup Hinweis:"
     grep "sudo" /tmp/unifi-doorbell-monitor-pm2-startup.txt || true
+  fi
+fi
+
+# Den während der Installation verbundenen HDMI-Monitor als dauerhafte
+# PipeWire-Ausgabe speichern. WirePlumber merkt sich den von wpctl gesetzten
+# Standard über Neustarts hinweg. Der Monitor muss dafür eingeschaltet sein.
+if [ "$HDMI_AUDIO" = "1" ]; then
+  INSTALL_UID="$(id -u "$INSTALL_USER")"
+  AUDIO_RUNTIME_DIR="/run/user/${INSTALL_UID}"
+  HDMI_SINK_ID=""
+
+  if [ -S "${AUDIO_RUNTIME_DIR}/pipewire-0" ]; then
+    HDMI_SINK_ID="$(
+      sudo -u "$INSTALL_USER" env LC_ALL=C XDG_RUNTIME_DIR="$AUDIO_RUNTIME_DIR" \
+        wpctl status 2>/dev/null |
+        awk '/Digital Stereo \(HDMI\)/ {
+          if (match($0, /[0-9]+\./)) {
+            print substr($0, RSTART, RLENGTH - 1)
+            exit
+          }
+        }'
+    )"
+  fi
+
+  if [ -n "$HDMI_SINK_ID" ]; then
+    sudo -u "$INSTALL_USER" env XDG_RUNTIME_DIR="$AUDIO_RUNTIME_DIR" \
+      wpctl set-default "$HDMI_SINK_ID"
+    sudo -u "$INSTALL_USER" env XDG_RUNTIME_DIR="$AUDIO_RUNTIME_DIR" \
+      wpctl set-mute "$HDMI_SINK_ID" 0
+    sudo -u "$INSTALL_USER" env XDG_RUNTIME_DIR="$AUDIO_RUNTIME_DIR" \
+      wpctl set-volume "$HDMI_SINK_ID" "$HDMI_AUDIO_VOLUME"
+    echo "HDMI-Audio ist Standardausgabe (PipeWire-ID ${HDMI_SINK_ID}, Lautstärke ${HDMI_AUDIO_VOLUME})."
+  else
+    echo "WARNUNG: Kein aktiver HDMI-Audioausgang gefunden."
+    echo "Monitor einschalten/anschließen und den Installer erneut ausführen."
   fi
 fi
 

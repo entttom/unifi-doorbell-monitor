@@ -27,6 +27,7 @@ chmod +x install_go2rtc_native.sh
 Das Skript:
 
 - installiert Node.js, npm, PM2, Firefox ESR und `wmctrl`
+- installiert ALSA/PipeWire und wählt den angeschlossenen HDMI-/WIMAXIT-Monitor als Audioausgabe
 - lädt `go2rtc` als Binary nach `/usr/local/bin/go2rtc`
 - erzeugt bei Bedarf:
   - `config/go2rtc.yaml`
@@ -36,6 +37,36 @@ Das Skript:
 - hinterlegt einen gezielten `sudoers`-Eintrag, damit die Weboberfläche `go2rtc` nach Konfigurationsänderungen neu starten kann
 - startet die Node-App über PM2 auf Port 3000
 - richtet eine Umleitung von Port 80 auf 3000 ein
+
+### HDMI-/WIMAXIT-Audio
+
+Der HDMI-Monitor muss während der Installation angeschlossen und eingeschaltet sein. Der Installer
+ermittelt den aktiven HDMI-Ausgang, setzt ihn mit PipeWire/WirePlumber dauerhaft als
+Standardausgabe, hebt eine Stummschaltung auf und stellt die Lautstärke standardmäßig auf 60 %.
+
+Die Lautstärke lässt sich beim Installieren ändern; `0.75` entspricht beispielsweise 75 %:
+
+```bash
+HDMI_AUDIO_VOLUME=0.75 ./install_go2rtc_native.sh
+```
+
+Soll die Audioausgabe nicht verändert werden:
+
+```bash
+HDMI_AUDIO=0 ./install_go2rtc_native.sh
+```
+
+Aktuellen Ausgang und Lautstärke prüfen:
+
+```bash
+wpctl status
+wpctl get-volume @DEFAULT_AUDIO_SINK@
+```
+
+Unter `Audio > Sinks` muss `Built-in Audio Digital Stereo (HDMI)` mit einem Stern (`*`) markiert
+sein. Findet der Installer keinen aktiven HDMI-Ausgang, gibt er eine Warnung aus und setzt die
+Installation fort. Dann HDMI-Kabel und Monitor prüfen, den Monitor einschalten und den Installer
+erneut starten.
 
 ### Port 80
 
