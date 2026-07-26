@@ -30,6 +30,7 @@ const APP_CONFIG_PATH = path.join(CONFIG_DIR, 'app-config.json');
 const APP_CONFIG_EXAMPLE_PATH = path.join(CONFIG_DIR, 'app-config.example.json');
 const GO2RTC_CONFIG_PATH = path.join(CONFIG_DIR, 'go2rtc.yaml');
 const GO2RTC_CONFIG_EXAMPLE_PATH = path.join(CONFIG_DIR, 'go2rtc.yaml.example');
+const STREAM_DEBUG_LOG_PATH = path.join(__dirname, 'logs', 'stream-debug.log');
 
 const SOUNDS_DIR = path.join(__dirname, 'sounds');
 const SOUND_EXTENSIONS = ['.mp3', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.flac'];
@@ -611,9 +612,9 @@ function getConfiguredActions() {
 
 function getPlayerUrl(streamKey) {
   const basePath = (appConfig.ui.go2rtcBasePath || '/go2rtc').replace(/\/$/, '');
-  // MSE über dieselbe WS-Verbindung (TCP via /go2rtc-Proxy) — zuverlässiger am Pi-Kiosk als
-  // WebRTC/UDP auf 127.0.0.1:8555 (ICE/„loading“-Hänger).
-  return `${basePath}/stream.html?src=${encodeURIComponent(streamKey)}&mode=mse`;
+  // MSE läuft bei UniFi-Streams mit langem GOP in Firefox zyklisch leer: go2rtc beschleunigt
+  // dabei bis 5x und Firefox wartet anschließend bis zum nächsten Keyframe.
+  return `${basePath}/stream.html?src=${encodeURIComponent(streamKey)}&mode=webrtc`;
 }
 
 function getAlternateCameraInfo(currentMode) {
@@ -1479,6 +1480,58 @@ app.get('/api/calendar', async (req, res) => {
 
 app.get('/api/ui_state', (req, res) => {
   sendJsonOk(res, buildUiStatePayload());
+});
+
+app.post('/api/stream_debug', async (req, res) => {
+  const sample = req.body && typeof req.body === 'object' ? req.body : {};
+  const safeSample = {
+    timestamp: new Date().toISOString(),
+    streamKey: typeof sample.streamKey === 'string' ? sample.streamKey.slice(0, 64) : null,
+    event: typeof sample.event === 'string' ? sample.event.slice(0, 64) : 'sample',
+    currentTime: Number.isFinite(sample.currentTime) ? sample.currentTime : null,
+    currentTimeDelta: Number.isFinite(sample.currentTimeDelta) ? sample.currentTimeDelta : null,
+    framesDelta: Number.isFinite(sample.framesDelta) ? sample.framesDelta : null,
+    droppedFrames: Number.isFinite(sample.droppedFrames) ? sample.droppedFrames : null,
+    paused: Boolean(sample.paused),
+    readyState: Number.isFinite(sample.readyState) ? sample.readyState : null,
+    networkState: Number.isFinite(sample.networkState) ? sample.networkState : null,
+    playbackRate: Number.isFinite(sample.playbackRate) ? sample.playbackRate : null,
+    bufferAhead: Number.isFinite(sample.bufferAhead) ? sample.bufferAhead : null,
+    visibilityState:
+      typeof sample.visibilityState === 'string' ? sample.visibilityState.slice(0, 32) : null,
+  };
+
+  try {
+    const streams = await fetchLocalJson('/api/streams');
+    const streamInfo = safeSample.streamKey ? streams[safeSample.streamKey] : null;
+    const producer = streamInfo && Array.isArray(streamInfo.producers)
+      ? streamInfo.producers.find((item) => item.format_name === 'rtsp')
+      : null;
+    const consumer = streamInfo && Array.isArray(streamInfo.consumers)
+      ? streamInfo.consumers.find(
+          (item) => item.format_name === 'mse/fmp4' || item.format_name === 'webrtc'
+        )
+      : null;
+    safeSample.go2rtc = {
+      producerId: producer ? producer.id : null,
+      bytesReceived: producer ? producer.bytes_recv : null,
+      consumerId: consumer ? consumer.id : null,
+      bytesSent: consumer ? consumer.bytes_send : null,
+    };
+  } catch (error) {
+    safeSample.go2rtcError = error.message;
+  }
+
+  try {
+    await fsPromises.mkdir(path.dirname(STREAM_DEBUG_LOG_PATH), { recursive: true });
+    await fsPromises.appendFile(STREAM_DEBUG_LOG_PATH, `${JSON.stringify(safeSample)}\n`, 'utf8');
+    if (safeSample.event !== 'sample') {
+      console.log(`[STREAM_DEBUG] ${JSON.stringify(safeSample)}`);
+    }
+    sendJsonOk(res);
+  } catch (error) {
+    res.status(500).json({ Status: 'Error', Message: error.message });
+  }
 });
 
 app.get('/api/settings', async (req, res) => {

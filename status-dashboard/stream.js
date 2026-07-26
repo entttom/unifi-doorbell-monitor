@@ -3,6 +3,7 @@ const STREAM_ENDPOINTS = {
   close: "/api/kill_stream_window",
   actionBase: "/api/actions/",
   switchCamera: "/api/switch_stream_camera",
+  debug: "/api/stream_debug",
 };
 
 const elements = {
@@ -25,6 +26,12 @@ let lastDashboardPath = "/status/";
 /** Timer für automatisches Nachstarten, wenn go2rtc/Firefox Autoplay blockiert. */
 let playbackAssistTimer = 0;
 let playbackAssistUntil = 0;
+let streamDebugTimer = 0;
+let streamDebugVideo = null;
+let streamDebugFrames = 0;
+let streamDebugLastFrames = 0;
+let streamDebugLastTime = null;
+let streamDebugLastStalled = false;
 
 const PLAYBACK_ASSIST_INTERVAL_MS = 900;
 const PLAYBACK_ASSIST_MAX_MS = 120000;
@@ -180,10 +187,122 @@ function scheduleIframePlaybackRetries() {
   }
 }
 
+function getBufferedAhead(video) {
+  if (!video.buffered || video.buffered.length === 0) {
+    return 0;
+  }
+  for (let index = 0; index < video.buffered.length; index += 1) {
+    const start = video.buffered.start(index);
+    const end = video.buffered.end(index);
+    if (video.currentTime >= start && video.currentTime <= end) {
+      return Math.max(0, end - video.currentTime);
+    }
+  }
+  return 0;
+}
+
+function sendStreamDebug(event, video, extra = {}) {
+  const currentTime = video ? video.currentTime : null;
+  const currentTimeDelta =
+    video && streamDebugLastTime !== null ? currentTime - streamDebugLastTime : null;
+  const framesDelta = streamDebugFrames - streamDebugLastFrames;
+  const payload = {
+    streamKey: new URL(currentPlayerUrl, window.location.href).searchParams.get("src"),
+    event,
+    currentTime,
+    currentTimeDelta,
+    framesDelta,
+    droppedFrames:
+      video && video.getVideoPlaybackQuality
+        ? video.getVideoPlaybackQuality().droppedVideoFrames
+        : null,
+    paused: video ? video.paused : true,
+    readyState: video ? video.readyState : null,
+    networkState: video ? video.networkState : null,
+    playbackRate: video ? video.playbackRate : null,
+    bufferAhead: video ? getBufferedAhead(video) : null,
+    visibilityState: document.visibilityState,
+    ...extra,
+  };
+  void fetch(STREAM_ENDPOINTS.debug, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    keepalive: true,
+  }).catch(() => {});
+  if (video) {
+    streamDebugLastTime = currentTime;
+    streamDebugLastFrames = streamDebugFrames;
+  }
+}
+
+function attachStreamDebugVideo(video) {
+  if (!video || streamDebugVideo === video) {
+    return;
+  }
+  streamDebugVideo = video;
+  streamDebugFrames = 0;
+  streamDebugLastFrames = 0;
+  streamDebugLastTime = null;
+  streamDebugLastStalled = false;
+
+  if (typeof video.requestVideoFrameCallback === "function") {
+    const countFrame = () => {
+      if (streamDebugVideo !== video) {
+        return;
+      }
+      streamDebugFrames += 1;
+      video.requestVideoFrameCallback(countFrame);
+    };
+    video.requestVideoFrameCallback(countFrame);
+  }
+
+  for (const event of ["playing", "waiting", "stalled", "suspend", "error", "ended"]) {
+    video.addEventListener(event, () => sendStreamDebug(event, video));
+  }
+  sendStreamDebug("attached", video);
+}
+
+function startStreamDebugLogging() {
+  if (streamDebugTimer) {
+    window.clearInterval(streamDebugTimer);
+  }
+  streamDebugTimer = window.setInterval(() => {
+    let video = null;
+    try {
+      video = elements.frame && elements.frame.contentDocument
+        ? pickPrimaryVideo(elements.frame.contentDocument)
+        : null;
+    } catch {
+      return;
+    }
+    if (!video) {
+      sendStreamDebug("video_missing", null);
+      return;
+    }
+    attachStreamDebugVideo(video);
+    const timeDelta =
+      streamDebugLastTime === null ? null : video.currentTime - streamDebugLastTime;
+    const stalled =
+      !video.paused &&
+      video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+      timeDelta !== null &&
+      timeDelta < 0.2;
+    sendStreamDebug(
+      stalled && !streamDebugLastStalled ? "freeze_start" : !stalled && streamDebugLastStalled
+        ? "freeze_end"
+        : "sample",
+      video
+    );
+    streamDebugLastStalled = stalled;
+  }, 1000);
+}
+
 function init() {
   if (elements.frame) {
     elements.frame.addEventListener("load", () => {
       scheduleIframePlaybackRetries();
+      startStreamDebugLogging();
     });
   }
   if (elements.frameWrap) {
