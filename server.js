@@ -614,7 +614,7 @@ function getPlayerUrl(streamKey) {
   const basePath = (appConfig.ui.go2rtcBasePath || '/go2rtc').replace(/\/$/, '');
   // MSE läuft bei UniFi-Streams mit langem GOP in Firefox zyklisch leer: go2rtc beschleunigt
   // dabei bis 5x und Firefox wartet anschließend bis zum nächsten Keyframe.
-  return `${basePath}/stream.html?src=${encodeURIComponent(streamKey)}&mode=webrtc`;
+  return `${basePath}/stream.html?src=${encodeURIComponent(streamKey)}&mode=webrtc&media=video`;
 }
 
 function getAlternateCameraInfo(currentMode) {

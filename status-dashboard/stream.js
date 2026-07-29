@@ -94,6 +94,16 @@ function triggerGo2rtcPlayerPlay(doc) {
   }
 }
 
+function muteStreamVideo(video) {
+  if (!video) {
+    return;
+  }
+  video.muted = true;
+  video.defaultMuted = true;
+  video.volume = 0;
+  video.setAttribute("muted", "");
+}
+
 function ensureVideoPlaybackHooks(video) {
   if (!video || videoPlaybackHooks.has(video)) {
     return;
@@ -102,10 +112,12 @@ function ensureVideoPlaybackHooks(video) {
     void tryResumeGo2rtcPlayback();
   };
   const onStreamAdd = () => bump();
+  const onVolumeChange = () => muteStreamVideo(video);
   video.addEventListener("loadedmetadata", bump);
   video.addEventListener("loadeddata", bump);
   video.addEventListener("canplay", bump);
   video.addEventListener("playing", bump);
+  video.addEventListener("volumechange", onVolumeChange);
   const stream = video.srcObject;
   if (stream && typeof stream.addEventListener === "function") {
     stream.addEventListener("addtrack", onStreamAdd);
@@ -116,6 +128,7 @@ function ensureVideoPlaybackHooks(video) {
       video.removeEventListener("loadeddata", bump);
       video.removeEventListener("canplay", bump);
       video.removeEventListener("playing", bump);
+      video.removeEventListener("volumechange", onVolumeChange);
       const s = video.srcObject;
       if (s && typeof s.removeEventListener === "function") {
         s.removeEventListener("addtrack", onStreamAdd);
@@ -150,6 +163,7 @@ async function tryResumeGo2rtcPlayback() {
   if (!video) {
     return false;
   }
+  muteStreamVideo(video);
   ensureVideoPlaybackHooks(video);
 
   if (!video.paused) {
@@ -163,7 +177,6 @@ async function tryResumeGo2rtcPlayback() {
     return false;
   }
 
-  video.muted = true;
   try {
     await video.play();
     return true;
