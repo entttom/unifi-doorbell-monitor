@@ -21,6 +21,7 @@ const CONFIG = {
         "fronius.0.site.P_PV",
         "alias.0.mqtt.0.eas.hmu.CurrentConsumedPower",
         "modbus.0.holdingRegisters.51_OUTPUT_FREQ",
+        "openknx.0.Melden_Sensor.Dach.Temperatur",
       ].join(","),
     frontYard: "/api/front_yard",
   },
@@ -620,7 +621,6 @@ async function loadWeather() {
 
 function renderWeather(data) {
   const current = data.current;
-  elements.weatherTemp.textContent = formatTemperature(current.temperature_2m);
   elements.weatherSummary.textContent = weatherLabel(current.weather_code);
   elements.weatherFeelsLike.textContent = formatTemperature(current.apparent_temperature);
   elements.weatherWind.textContent = `${Math.round(current.wind_speed_10m)} km/h`;
@@ -655,7 +655,6 @@ function renderWeather(data) {
 }
 
 function renderWeatherFallback(message = "Wetter nicht verfügbar.") {
-  elements.weatherTemp.textContent = "--";
   elements.weatherSummary.textContent = message;
   elements.weatherFeelsLike.textContent = "--";
   elements.weatherWind.textContent = "--";
@@ -693,6 +692,7 @@ function renderEnergy(data) {
     pvEntry,
     heatingPowerEntry,
     outputFreqEntry,
+    roofTemperatureEntry,
   ] = data;
 
   const soc = extractValue(socEntry);
@@ -702,7 +702,9 @@ function renderEnergy(data) {
   const pvPower = extractValue(pvEntry);
   const heatingPower = extractValue(heatingPowerEntry);
   const outputFreq = extractValue(outputFreqEntry);
+  const roofTemperature = extractValue(roofTemperatureEntry);
 
+  elements.weatherTemp.textContent = formatTemperature(roofTemperature);
   elements.energyPv.textContent = formatPower(pvPower);
   elements.energyLoad.textContent = formatHousePower(loadPower);
   elements.energyBatteryPower.textContent = formatBatteryPower(batteryPower);
@@ -728,6 +730,7 @@ function renderEnergy(data) {
 }
 
 function renderEnergyFallback() {
+  elements.weatherTemp.textContent = "--";
   elements.energyPv.textContent = "--";
   elements.energyLoad.textContent = "--";
   elements.energyBatteryPower.textContent = "--";
