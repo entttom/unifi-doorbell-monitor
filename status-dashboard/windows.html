@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#f2f0ea">
+    <title>Fensterstatus</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body class="windows-page">
+    <main class="windows-shell">
+      <header class="windows-header">
+        <a class="icon-button" href="index.html" aria-label="Zum Dashboard" title="Zum Dashboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m15 18-6-6 6-6"/>
+          </svg>
+        </a>
+        <div class="windows-title">
+          <p class="eyebrow">Hausstatus</p>
+          <h1>Fenster</h1>
+          <p class="windows-subtitle" id="windows-subtitle">Aktualisiere Zustände …</p>
+        </div>
+        <a class="icon-button" href="windows-settings.html" aria-label="Fenster verwalten" title="Fenster verwalten">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="4" y="3" width="16" height="18" rx="1.5"/>
+            <path d="M12 3v18M4 12h16M12 3l8 9"/>
+          </svg>
+        </a>
+      </header>
+
+      <section class="windows-summary" aria-live="polite">
+        <div class="window-summary-orb" id="window-summary-orb" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="3" width="16" height="18" rx="1.5"/>
+            <path d="M12 3v18M4 12h16"/>
+          </svg>
+        </div>
+        <div>
+          <p class="window-summary-label" id="window-summary-label">Alles geschlossen</p>
+          <p class="window-summary-detail" id="window-summary-detail">Prüfe die Verbindung …</p>
+        </div>
+        <button class="refresh-button" id="windows-refresh" type="button">Aktualisieren</button>
+      </section>
+
+      <section class="window-grid" id="window-grid" aria-live="polite"></section>
+    </main>
+    <script src="windows.js"></script>
+  </body>
+</html>

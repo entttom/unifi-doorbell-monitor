@@ -26,6 +26,8 @@ const STATUS_CONFIG_DIR = path.join(STATUS_DIR, 'config');
 const CONFIG_DIR = path.join(__dirname, 'config');
 const CALENDAR_URL_PATH = path.join(STATUS_CONFIG_DIR, 'calendar-url.txt');
 const CALENDAR_URL_EXAMPLE_PATH = path.join(STATUS_CONFIG_DIR, 'calendar-url.example.txt');
+const WINDOWS_CONFIG_PATH = path.join(STATUS_CONFIG_DIR, 'windows.json');
+const WINDOWS_CONFIG_EXAMPLE_PATH = path.join(STATUS_CONFIG_DIR, 'windows.example.json');
 const APP_CONFIG_PATH = path.join(CONFIG_DIR, 'app-config.json');
 const APP_CONFIG_EXAMPLE_PATH = path.join(CONFIG_DIR, 'app-config.example.json');
 const GO2RTC_CONFIG_PATH = path.join(CONFIG_DIR, 'go2rtc.yaml');
@@ -39,6 +41,19 @@ const SOUND_MAX_REPEAT = 50;
 const SOUND_MAX_PAUSE_MS = 60000;
 const SOUND_MIN_SPEED = 0.5;
 const SOUND_MAX_SPEED = 2;
+const IOBROKER_SIMPLE_API_URL = process.env.IOBROKER_SIMPLE_API_URL || 'http://192.168.1.2:8087';
+
+const DEFAULT_WINDOWS = [
+  ['garderobe-fenster', 'Garderobe', 'Erdgeschoss', 'openknx.0.Melden_Sensor.Erdgeschoss.3_Gardarobe-Fenster(Melden)'],
+  ['kueche-fenster', 'Küche', 'Erdgeschoss', 'openknx.0.Melden_Sensor.Erdgeschoss.5_Küche-Fenster(Melden)'],
+  ['schlafzimmer-fenster', 'Schlafzimmer', 'Obergeschoss', 'openknx.0.Melden_Sensor.Obergeschoss.3_Schlafzimmer-Fenster(Melden)'],
+  ['elternbad-fenster', 'Elternbad', 'Obergeschoss', 'openknx.0.Melden_Sensor.Obergeschoss.4_Elternbad-Fenster(Melden)'],
+  ['schrankraum-fenster', 'Schrankraum', 'Obergeschoss', 'openknx.0.Melden_Sensor.Obergeschoss.5_Schrankraum-Fenster(Melden)'],
+  ['kinderzimmer-2-fenster', 'Kinderzimmer 2', 'Obergeschoss', 'openknx.0.Melden_Sensor.Obergeschoss.6_Kinderzimmer_2-Fenster(Melden)'],
+  ['buero-fenster', 'Büro', 'Obergeschoss', 'openknx.0.Melden_Sensor.Obergeschoss.7_Büro-Fenster(Melden)'],
+  ['kinderbad-strasse', 'Kinderbad · Straßenseite', 'Obergeschoss', 'openknx.0.Melden_Sensor.Obergeschoss.8_Kinderbad-Fenster_Straßenseite(Melden)'],
+  ['kinderbad-lange-seite', 'Kinderbad · lange Seite', 'Obergeschoss', 'openknx.0.Melden_Sensor.Obergeschoss.8_Kinderbad-Fenster_lange_Seite(Melden)'],
+].map(([id, name, room, sourceId]) => ({ id, name, room, sourceId }));
 
 const DEFAULT_APP_CONFIG = {
   ui: {
@@ -246,6 +261,108 @@ async function readTextFile(filePath, fallbackPath = null) {
     }
     throw error;
   }
+}
+
+function normalizeWindowEntry(entry, index) {
+  const id = typeof entry?.id === 'string' ? entry.id.trim() : '';
+  const name = typeof entry?.name === 'string' ? entry.name.trim() : '';
+  const room = typeof entry?.room === 'string' ? entry.room.trim() : '';
+  const sourceId = typeof entry?.sourceId === 'string' ? entry.sourceId.trim() : '';
+
+  if (!/^[a-z0-9][a-z0-9_-]{0,79}$/i.test(id)) {
+    throw new Error(`Fenster ${index + 1}: Ungültige Kennung.`);
+  }
+  if (!name || name.length > 80) {
+    throw new Error(`Fenster ${index + 1}: Bitte einen Namen mit höchstens 80 Zeichen angeben.`);
+  }
+  if (room.length > 80) {
+    throw new Error(`Fenster ${index + 1}: Raum darf höchstens 80 Zeichen lang sein.`);
+  }
+  // Nur Objekt-IDs, keine URLs oder Pfade. Das verhindert, dass die Status-API als Proxy missbraucht wird.
+  if (!sourceId || sourceId.length > 240 || /[,\\/\s]/.test(sourceId)) {
+    throw new Error(`Fenster ${index + 1}: Bitte eine gültige ioBroker-Objekt-ID angeben.`);
+  }
+
+  return { id, name, room, sourceId };
+}
+
+function normalizeWindowsConfig(input) {
+  const entries = input && Array.isArray(input.windows) ? input.windows : input;
+  if (!Array.isArray(entries)) {
+    throw new Error('Fensterliste fehlt.');
+  }
+  if (entries.length > 80) {
+    throw new Error('Es können höchstens 80 Fenster angelegt werden.');
+  }
+
+  const windows = entries.map(normalizeWindowEntry);
+  if (new Set(windows.map((entry) => entry.id)).size !== windows.length) {
+    throw new Error('Jedes Fenster benötigt eine eindeutige Kennung.');
+  }
+  return { windows };
+}
+
+async function loadWindowsConfig() {
+  for (const candidate of [WINDOWS_CONFIG_PATH, WINDOWS_CONFIG_EXAMPLE_PATH]) {
+    try {
+      const content = await fsPromises.readFile(candidate, 'utf8');
+      return normalizeWindowsConfig(JSON.parse(content));
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        console.error(`Konnte ${candidate} nicht lesen:`, error.message);
+      }
+    }
+  }
+  return { windows: DEFAULT_WINDOWS };
+}
+
+function simpleApiBulkUrl(sourceIds) {
+  const endpoint = new URL(IOBROKER_SIMPLE_API_URL);
+  endpoint.pathname = `/getBulk/${sourceIds.map((id) => encodeURIComponent(id)).join(',')}`;
+  endpoint.search = '';
+  return endpoint.toString();
+}
+
+function getWindowState(rawStates, sourceId, index) {
+  const raw = Array.isArray(rawStates) ? rawStates[index] : rawStates && rawStates[sourceId];
+  const value = raw && typeof raw === 'object' && Object.prototype.hasOwnProperty.call(raw, 'val')
+    ? raw.val
+    : raw;
+
+  if (value === true || value === 1 || value === 'true' || value === '1') {
+    return 'open';
+  }
+  if (value === false || value === 0 || value === 'false' || value === '0') {
+    return 'closed';
+  }
+  return 'unknown';
+}
+
+async function loadWindowStatus() {
+  const config = await loadWindowsConfig();
+  if (config.windows.length === 0) {
+    return { windows: [], updatedAt: new Date().toISOString() };
+  }
+
+  const response = await fetchText(simpleApiBulkUrl(config.windows.map((entry) => entry.sourceId)), 5000);
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw new Error(`ioBroker antwortet mit HTTP ${response.statusCode}.`);
+  }
+
+  let rawStates;
+  try {
+    rawStates = JSON.parse(response.body);
+  } catch (error) {
+    throw new Error('ioBroker hat keine lesbaren Zustandsdaten geliefert.');
+  }
+
+  return {
+    updatedAt: new Date().toISOString(),
+    windows: config.windows.map((entry, index) => ({
+      ...entry,
+      state: getWindowState(rawStates, entry.sourceId, index),
+    })),
+  };
 }
 
 async function readGo2RtcConfigText() {
@@ -1548,6 +1665,33 @@ app.get('/api/settings', async (req, res) => {
       Status: 'Error',
       Message: error.message,
     });
+  }
+});
+
+app.get('/api/windows', async (req, res) => {
+  try {
+    sendJsonOk(res, await loadWindowsConfig());
+  } catch (error) {
+    res.status(500).json({ Status: 'Error', Message: error.message });
+  }
+});
+
+app.post('/api/windows', async (req, res) => {
+  try {
+    const config = normalizeWindowsConfig(req.body || {});
+    await ensureConfigDirectories();
+    await fsPromises.writeFile(WINDOWS_CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+    sendJsonOk(res, config);
+  } catch (error) {
+    res.status(400).json({ Status: 'Error', Message: error.message });
+  }
+});
+
+app.get('/api/windows/status', async (req, res) => {
+  try {
+    sendJsonOk(res, await loadWindowStatus());
+  } catch (error) {
+    res.status(502).json({ Status: 'Error', Message: error.message });
   }
 });
 

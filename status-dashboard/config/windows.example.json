@@ -1,0 +1,58 @@
+{
+  "windows": [
+    {
+      "id": "garderobe-fenster",
+      "name": "Garderobe",
+      "room": "Erdgeschoss",
+      "sourceId": "openknx.0.Melden_Sensor.Erdgeschoss.3_Gardarobe-Fenster(Melden)"
+    },
+    {
+      "id": "kueche-fenster",
+      "name": "Küche",
+      "room": "Erdgeschoss",
+      "sourceId": "openknx.0.Melden_Sensor.Erdgeschoss.5_Küche-Fenster(Melden)"
+    },
+    {
+      "id": "schlafzimmer-fenster",
+      "name": "Schlafzimmer",
+      "room": "Obergeschoss",
+      "sourceId": "openknx.0.Melden_Sensor.Obergeschoss.3_Schlafzimmer-Fenster(Melden)"
+    },
+    {
+      "id": "elternbad-fenster",
+      "name": "Elternbad",
+      "room": "Obergeschoss",
+      "sourceId": "openknx.0.Melden_Sensor.Obergeschoss.4_Elternbad-Fenster(Melden)"
+    },
+    {
+      "id": "schrankraum-fenster",
+      "name": "Schrankraum",
+      "room": "Obergeschoss",
+      "sourceId": "openknx.0.Melden_Sensor.Obergeschoss.5_Schrankraum-Fenster(Melden)"
+    },
+    {
+      "id": "kinderzimmer-2-fenster",
+      "name": "Kinderzimmer 2",
+      "room": "Obergeschoss",
+      "sourceId": "openknx.0.Melden_Sensor.Obergeschoss.6_Kinderzimmer_2-Fenster(Melden)"
+    },
+    {
+      "id": "buero-fenster",
+      "name": "Büro",
+      "room": "Obergeschoss",
+      "sourceId": "openknx.0.Melden_Sensor.Obergeschoss.7_Büro-Fenster(Melden)"
+    },
+    {
+      "id": "kinderbad-strasse",
+      "name": "Kinderbad · Straßenseite",
+      "room": "Obergeschoss",
+      "sourceId": "openknx.0.Melden_Sensor.Obergeschoss.8_Kinderbad-Fenster_Straßenseite(Melden)"
+    },
+    {
+      "id": "kinderbad-lange-seite",
+      "name": "Kinderbad · lange Seite",
+      "room": "Obergeschoss",
+      "sourceId": "openknx.0.Melden_Sensor.Obergeschoss.8_Kinderbad-Fenster_lange_Seite(Melden)"
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#f2f0ea">
+    <title>Fenster verwalten</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body class="windows-page windows-settings-page">
+    <main class="windows-shell window-settings-shell">
+      <header class="windows-header">
+        <a class="icon-button" href="windows.html" aria-label="Zum Fensterstatus" title="Zum Fensterstatus">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+        </a>
+        <div class="windows-title">
+          <p class="eyebrow">Konfiguration</p>
+          <h1>Fenster verwalten</h1>
+          <p class="windows-subtitle" id="window-settings-status">Lade Fenster …</p>
+        </div>
+        <a class="icon-button" href="index.html" aria-label="Zum Dashboard" title="Zum Dashboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg>
+        </a>
+      </header>
+
+      <section class="window-settings-intro">
+        <p>Füge Kontakte aus ioBroker hinzu. <strong>Wahr</strong> wird als „geöffnet“, <strong>Falsch</strong> als „geschlossen“ angezeigt.</p>
+      </section>
+
+      <section class="window-settings-list" id="window-settings-list"></section>
+
+      <section class="window-add-panel">
+        <h2>Neues Fenster</h2>
+        <form id="window-add-form" class="window-add-form">
+          <label class="settings-field"><span>Name</span><input id="new-window-name" required maxlength="80" placeholder="z. B. Arbeitszimmer"></label>
+          <label class="settings-field"><span>Raum / Etage</span><input id="new-window-room" maxlength="80" placeholder="z. B. Obergeschoss"></label>
+          <label class="settings-field window-source-field"><span>ioBroker Objekt-ID</span><input id="new-window-source" required maxlength="240" spellcheck="false" placeholder="openknx.0.Melden_Sensor.…"></label>
+          <button class="action-button" type="submit">Fenster hinzufügen</button>
+        </form>
+      </section>
+    </main>
+    <script src="windows-settings.js"></script>
+  </body>
+</html>
