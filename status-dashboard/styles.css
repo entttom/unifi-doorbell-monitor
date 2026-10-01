@@ -1010,8 +1010,9 @@ body.settings-page {
 
 /* Fensterstatus: eigenständige, touchfreundliche Ansicht. */
 body.windows-page {
-  min-height: 100dvh;
-  height: auto;
+  /* html/body stehen global auf overflow:hidden. Nur mit fester Höhe wird body zum eigenen
+     Scroll-Container, sonst wächst er mit dem Inhalt und html schneidet den Rest ab. */
+  height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
