@@ -7,6 +7,7 @@ const elements = {
   name: document.getElementById("new-window-name"),
   room: document.getElementById("new-window-room"),
   source: document.getElementById("new-window-source"),
+  trueMeans: document.getElementById("new-window-true-means"),
 };
 
 let windows = [];
@@ -45,6 +46,20 @@ function renderWindows() {
     const source = document.createElement("code");
     source.textContent = entry.sourceId;
     info.append(title, room, source);
+
+    // "Wahr" heißt geöffnet (invert=false) oder geschlossen (invert=true, z. B. zigbee2mqtt).
+    const trueMeans = document.createElement("select");
+    trueMeans.className = "window-true-select";
+    trueMeans.setAttribute("aria-label", `Bedeutung von Wahr für ${entry.name}`);
+    for (const [value, label] of [["open", "Wahr = geöffnet"], ["closed", "Wahr = geschlossen"]]) {
+      trueMeans.append(new Option(label, value));
+    }
+    trueMeans.value = entry.invert ? "closed" : "open";
+    trueMeans.addEventListener("change", () => {
+      entry.invert = trueMeans.value === "closed";
+      void saveWindows("Einstellung gespeichert");
+    });
+
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "remove-window-button";
@@ -54,7 +69,11 @@ function renderWindows() {
       renderWindows();
       void saveWindows("Fenster entfernt");
     });
-    row.append(info, remove);
+
+    const controls = document.createElement("div");
+    controls.className = "window-setting-controls";
+    controls.append(trueMeans, remove);
+    row.append(info, controls);
     elements.list.append(row);
   }
 }
@@ -100,7 +119,13 @@ elements.form.addEventListener("submit", (event) => {
   const name = elements.name.value.trim();
   const sourceId = elements.source.value.trim();
   if (!name || !sourceId) return;
-  windows.push({ id: createId(name), name, room: elements.room.value.trim(), sourceId });
+  windows.push({
+    id: createId(name),
+    name,
+    room: elements.room.value.trim(),
+    sourceId,
+    invert: elements.trueMeans.value === "closed",
+  });
   elements.form.reset();
   renderWindows();
   void saveWindows("Fenster hinzugefügt");

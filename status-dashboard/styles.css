@@ -1293,6 +1293,28 @@ body.windows-page {
   border-color: rgba(180, 60, 47, 0.2);
 }
 
+.window-setting-controls {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.window-true-select,
+.window-true-field select {
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  font: inherit;
+  color: var(--text);
+}
+
+.window-true-select {
+  font-size: 14px;
+}
+
 .window-add-panel {
   margin-top: 14px;
   padding: 18px;
@@ -1310,6 +1332,7 @@ body.windows-page {
 }
 
 .window-add-form .window-source-field,
+.window-add-form .window-true-field,
 .window-add-form .action-button {
   grid-column: 1 / -1;
 }
@@ -1439,8 +1462,17 @@ body.windows-page {
     gap: 10px;
   }
 
-  .remove-window-button {
+  .window-setting-controls {
     width: 100%;
+  }
+
+  .window-true-select {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .remove-window-button {
+    flex: 0 0 auto;
   }
 
   .window-add-form {
@@ -1448,6 +1480,7 @@ body.windows-page {
   }
 
   .window-add-form .window-source-field,
+  .window-add-form .window-true-field,
   .window-add-form .action-button {
     grid-column: auto;
   }

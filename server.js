@@ -53,7 +53,10 @@ const DEFAULT_WINDOWS = [
   ['buero-fenster', 'Büro', 'Obergeschoss', 'openknx.0.Melden_Sensor.Obergeschoss.7_Büro-Fenster(Melden)'],
   ['kinderbad-strasse', 'Kinderbad · Straßenseite', 'Obergeschoss', 'openknx.0.Melden_Sensor.Obergeschoss.8_Kinderbad-Fenster_Straßenseite(Melden)'],
   ['kinderbad-lange-seite', 'Kinderbad · lange Seite', 'Obergeschoss', 'openknx.0.Melden_Sensor.Obergeschoss.8_Kinderbad-Fenster_lange_Seite(Melden)'],
-].map(([id, name, room, sourceId]) => ({ id, name, room, sourceId }));
+  // Zigbee-Kontakte (zigbee2mqtt): contact=true heißt „geschlossen“, daher invertiert.
+  ['yogaraum-ost', 'Yogaraum · Ost', '', 'mqtt.0.zigbee2mqtt.Fenster_Yogaraum_Ost.contact', true],
+  ['yogaraum-west', 'Yogaraum · West', '', 'mqtt.0.zigbee2mqtt.Fenster_Yogaraum_West.contact', true],
+].map(([id, name, room, sourceId, invert]) => ({ id, name, room, sourceId, ...(invert ? { invert } : {}) }));
 
 const DEFAULT_APP_CONFIG = {
   ui: {
@@ -283,7 +286,8 @@ function normalizeWindowEntry(entry, index) {
     throw new Error(`Fenster ${index + 1}: Bitte eine gültige ioBroker-Objekt-ID angeben.`);
   }
 
-  return { id, name, room, sourceId };
+  // invert: Kontakt meldet true = geschlossen (z. B. zigbee2mqtt). Nur gesetzt, wenn aktiv.
+  return entry.invert === true ? { id, name, room, sourceId, invert: true } : { id, name, room, sourceId };
 }
 
 function normalizeWindowsConfig(input) {
@@ -323,19 +327,22 @@ function simpleApiBulkUrl(sourceIds) {
   return endpoint.toString();
 }
 
-function getWindowState(rawStates, sourceId, index) {
+function getWindowState(rawStates, sourceId, index, invert = false) {
   const raw = Array.isArray(rawStates) ? rawStates[index] : rawStates && rawStates[sourceId];
   const value = raw && typeof raw === 'object' && Object.prototype.hasOwnProperty.call(raw, 'val')
     ? raw.val
     : raw;
 
+  let state = 'unknown';
   if (value === true || value === 1 || value === 'true' || value === '1') {
-    return 'open';
+    state = 'open';
+  } else if (value === false || value === 0 || value === 'false' || value === '0') {
+    state = 'closed';
   }
-  if (value === false || value === 0 || value === 'false' || value === '0') {
-    return 'closed';
+  if (invert && state !== 'unknown') {
+    state = state === 'open' ? 'closed' : 'open';
   }
-  return 'unknown';
+  return state;
 }
 
 async function loadWindowStatus() {
@@ -360,7 +367,7 @@ async function loadWindowStatus() {
     updatedAt: new Date().toISOString(),
     windows: config.windows.map((entry, index) => ({
       ...entry,
-      state: getWindowState(rawStates, entry.sourceId, index),
+      state: getWindowState(rawStates, entry.sourceId, index, entry.invert === true),
     })),
   };
 }

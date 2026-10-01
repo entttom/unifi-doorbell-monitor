@@ -24,7 +24,7 @@
       </header>
 
       <section class="window-settings-intro">
-        <p>Füge Kontakte aus ioBroker hinzu. <strong>Wahr</strong> wird als „geöffnet“, <strong>Falsch</strong> als „geschlossen“ angezeigt.</p>
+        <p>Füge Kontakte aus ioBroker hinzu. Pro Fenster legst du fest, ob der Wert <strong>Wahr</strong> „geöffnet“ oder „geschlossen“ bedeutet – <strong>Falsch</strong> ist jeweils das Gegenteil. Zigbee-Kontakte (zigbee2mqtt) melden bei geschlossenem Fenster <strong>Wahr</strong>.</p>
       </section>
 
       <section class="window-settings-list" id="window-settings-list"></section>
@@ -35,6 +35,13 @@
           <label class="settings-field"><span>Name</span><input id="new-window-name" required maxlength="80" placeholder="z. B. Arbeitszimmer"></label>
           <label class="settings-field"><span>Raum / Etage</span><input id="new-window-room" maxlength="80" placeholder="z. B. Obergeschoss"></label>
           <label class="settings-field window-source-field"><span>ioBroker Objekt-ID</span><input id="new-window-source" required maxlength="240" spellcheck="false" placeholder="openknx.0.Melden_Sensor.…"></label>
+          <label class="settings-field window-true-field">
+            <span>Wert „Wahr“ bedeutet</span>
+            <select id="new-window-true-means">
+              <option value="open">Fenster geöffnet</option>
+              <option value="closed">Fenster geschlossen</option>
+            </select>
+          </label>
           <button class="action-button" type="submit">Fenster hinzufügen</button>
         </form>
       </section>

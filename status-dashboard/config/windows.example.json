@@ -53,6 +53,20 @@
       "name": "Kinderbad · lange Seite",
       "room": "Obergeschoss",
       "sourceId": "openknx.0.Melden_Sensor.Obergeschoss.8_Kinderbad-Fenster_lange_Seite(Melden)"
+    },
+    {
+      "id": "yogaraum-ost",
+      "name": "Yogaraum · Ost",
+      "room": "",
+      "sourceId": "mqtt.0.zigbee2mqtt.Fenster_Yogaraum_Ost.contact",
+      "invert": true
+    },
+    {
+      "id": "yogaraum-west",
+      "name": "Yogaraum · West",
+      "room": "",
+      "sourceId": "mqtt.0.zigbee2mqtt.Fenster_Yogaraum_West.contact",
+      "invert": true
     }
   ]
 }
